@@ -469,6 +469,7 @@ class GaussianDiffusion:
         device=None,
         progress=False,
         start_t=None,
+        mask=None, 
     ):
         """
         Generate samples from the model.
@@ -501,6 +502,7 @@ class GaussianDiffusion:
             device=device,
             progress=progress,
             start_t=start_t,
+            mask=mask,
         ):
             final = sample
         return final["sample"]
@@ -518,6 +520,7 @@ class GaussianDiffusion:
         device=None,
         progress=False,
         start_t=None, 
+        mask=None, 
     ):
         """
         Generate samples from the model and yield intermediate samples from

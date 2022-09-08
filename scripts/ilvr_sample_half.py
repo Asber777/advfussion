@@ -15,6 +15,7 @@ from guided_diffusion import dist_util, logger
 from guided_diffusion.script_util import *
 # from guided_diffusion.image_datasets import load_data
 from torchvision import utils
+from guided_diffusion.grad_cam import GradCamPlusPlus, get_last_conv_name
 import math
 
 def create_argparser():
@@ -29,14 +30,15 @@ def create_argparser():
         range_t2=1000,
         model_path="guided-diffusion/models/256x256_diffusion.pt",
         classifier_path="guided-diffusion/models/256x256_classifier.pt",
-        attack_model_name= "Standard_R50", #"Salman2020Do_50_2"
+        attack_model_name= "Salman2020Do_50_2", #"Standard_R50", #"Salman2020Do_50_2"
         attack_model_type='Linf',
         generate_scale=1.0,
         adver_scale=0.1,
         ssim_scale=0,
         lpips_scale=0, 
         seed=777,
-        start_t=70, 
+        start_t=60,  # must <= max(timestep_respacing) ? currently
+        nb_iter=10,
     ) 
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())
@@ -89,6 +91,8 @@ def main():
     attack_model = load_model(model_name=args.attack_model_name, 
         dataset='imagenet', threat_model=args.attack_model_type)
     attack_model = attack_model.to(dist_util.dev())
+    layer_name = get_last_conv_name(attack_model)
+    grad_cam = GradCamPlusPlus(attack_model, layer_name)
 
     # loss_fn_alex = lpips.LPIPS(net='alex')
     # loss_fn_alex = loss_fn_alex.to(dist_util.dev())
@@ -163,10 +167,11 @@ def main():
     attack_clas_acc = 0
     seed_torch(args.seed)
     while count * args.batch_size < args.num_samples:
-        x, y = next(data)
-        # 送进去之前先PGD一下~
+        x, y = next(data)     
         x, y = x.to(dist_util.dev()), y.to(dist_util.dev())
-        model_kwargs = {"guide_x":x, "y":y}
+        mask = grad_cam((x+1)/2.)
+        pgd_x = diffuson_pgd(x, y, attack_model, nb_iter=args.nb_iter,)
+        model_kwargs = {"guide_x":pgd_x, "y":y}
         sample = diffusion.p_sample_loop(
             model_fn,
             (args.batch_size, 3, args.image_size, args.image_size),
@@ -175,6 +180,7 @@ def main():
             cond_fn=cond_fn,
             device=dist_util.dev(),
             start_t=args.start_t,
+            mask=mask,
         )
         sample = th.clamp(sample,-1.,1.)
 
@@ -209,6 +215,7 @@ def main():
     
     dist.barrier()
     logger.log("sampling complete")
+    grad_cam.remove_handlers()
 
 if __name__ == "__main__":
     main()

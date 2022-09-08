@@ -63,24 +63,16 @@ def seed_torch(seed=1029):
 	th.backends.cudnn.deterministic = True
 
 NUM_CLASSES = 1000
-def pgd(x, y, attack_model, nb_iter=1, eps=4./255, eps_iter=1./255, 
-                clip_min=0.0, clip_max=1.0, target=False):
-    '''
-    plz make sure x is range from 0, 1
-    '''
+def diffuson_pgd(x, y, attack_model, nb_iter=1, eps=8./255, eps_iter=2./255, 
+                clip_min=-1.0, clip_max=1.0, target=False, output_delta=False):
     x, y = x.detach().clone(), y.detach().clone()
     delta = th.zeros_like(x)
     # delta = nn.Parameter(delta)
-    # mask = th.ones(len(y),dtype=th.uint8)
     with th.enable_grad():
         delta.requires_grad_()
         for _ in range(nb_iter):
             outputs = attack_model(x + delta)
-            # update mask
-            if not target:
-                mask = outputs.argmax(dim=-1) == y
-            else:
-                mask = outputs.argmax(dim=-1) != y 
+            mask = outputs.argmax(dim=-1) != y if target else outputs.argmax(dim=-1) == y
             if sum(mask) == 0: break
             loss = nn.CrossEntropyLoss(reduction="sum")(outputs[mask,:], y[mask])
             loss.backward()
@@ -91,7 +83,7 @@ def pgd(x, y, attack_model, nb_iter=1, eps=4./255, eps_iter=1./255,
             delta.data = clamp(delta.data, -eps, eps)
             delta.data = clamp(x.data + delta.data, clip_min, clip_max) - x.data
             delta.grad.data.zero_()
-    return delta.data
+    return delta.data if output_delta else x + delta.data
 
 def get_idex2name_map(INDEX2NAME_MAP_PATH):
     result_dict = {}

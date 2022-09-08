@@ -74,10 +74,10 @@ def main():
                 x = clamp(x, -1, 1)
         if args.fgm_fn and time < args.fgm_t:
             if args.target_attack:
-                x += pgd(x, guide_y, attack_model, args.nb_iter, args.eps_iter, 
+                x += diffuson_pgd(x, guide_y, attack_model, args.nb_iter, args.eps_iter, 
                 clip_min=-1., clip_max=1., target=True)
             else:
-                x += pgd(x, y, attack_model, args.nb_iter, args.eps_iter,
+                x += diffuson_pgd(x, y, attack_model, args.nb_iter, args.eps_iter,
                 clip_min=-1., clip_max=1.,) 
         return x
 

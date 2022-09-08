@@ -26,7 +26,7 @@ from guided_diffusion.script_util import (
     get_idex2name_map, 
     save_args, 
     arr2pic_save, 
-    pgd, 
+    diffuson_pgd, 
     seed_torch,
     get_steps_scale_map, 
 )
@@ -227,7 +227,7 @@ def main():
         index += 40 if args.timestep_respacing == 'ddim25' else 1
         if args.use_pgd and t[0] < 10:
             x = pic * 0.5 + 0.5
-            advx = pgd(x, guide_y, )
+            advx = diffuson_pgd(x, guide_y, )
             new_mean = (advx - 0.5) * 2.0
             return new_mean
         return gradient
