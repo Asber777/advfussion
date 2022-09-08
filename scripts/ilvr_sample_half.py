@@ -21,7 +21,7 @@ import math
 def create_argparser():
     defaults = dict(
         result_dir='/root/hhtpro/123/result',
-        describe="ilvr_nocond",
+        describe="onlyhalf_mask",
         clip_denoised=True,
         num_samples=5,
         batch_size=5,
@@ -33,12 +33,13 @@ def create_argparser():
         attack_model_name= "Salman2020Do_50_2", #"Standard_R50", #"Salman2020Do_50_2"
         attack_model_type='Linf',
         generate_scale=1.0,
-        adver_scale=0.1,
+        adver_scale=0.05,
         ssim_scale=0,
         lpips_scale=0, 
         seed=777,
         start_t=60,  # must <= max(timestep_respacing) ? currently
         nb_iter=10,
+        threshold=0.5,
     ) 
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())
@@ -111,9 +112,17 @@ def main():
     # up = Resizer(shape_d, args.down_N).to(next(model.parameters()).device)
     # resizers = (down, up)
 
-    def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, mean=None, variance=None,  pred_xstart=None, **kwargs):
+    def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, 
+            mean=None, variance=None,  pred_xstart=None, mask=None, **kwargs):
+        '''
+        x: x_{t+1}
+        mean: x_{t}
+        guide_x: pgd_x0
+        guide_x_t: pgd_x0_t
+        '''
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
         
+        '''
         # ILVR: 
         # if time > args.ranget1 and guide_x_t is not None and resizers is not None:
         #     down, up = resizers
@@ -137,22 +146,26 @@ def main():
             # loss -= loss_fn_alex.forward(x_in, guide_x).sum() * args.lpips_scale
 
             # gradient = th.autograd.grad(loss, x_in)[0]
-
         # mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
 
-        if time < args.range_t2:
-            delta = th.zeros_like(x)
-            with th.enable_grad():
-                delta.requires_grad_()
-                tmpx = pred_xstart.detach().clone() + delta # range from -1~1
-                attack_logits = attack_model(th.clamp((tmpx+1)/2.,0.,1.)) 
-                # attack_log_probs = F.log_softmax(attack_logits, dim=-1)
-                selected = attack_logits[range(len(attack_logits)), y.view(-1)] 
-                loss = -selected.sum() * args.adver_scale 
-                loss.backward()
-                grad_sign = delta.grad.data.detach().clone()
-                # delta.grad.data.zero_()
-            mean = mean.float() + grad_sign.float()
+        '''
+        original_maks = th.where(mask > args.threshold, 1.,0.)
+        generate_maks = th.where(mask <= args.threshold, 1.,0.)
+        mean = guide_x_t * original_maks + generate_maks * mean
+
+        # if time < args.range_t2:
+        #     delta = th.zeros_like(x)
+        #     with th.enable_grad():
+        #         delta.requires_grad_()
+        #         tmpx = pred_xstart.detach().clone() + delta # range from -1~1
+        #         attack_logits = attack_model(th.clamp((tmpx+1)/2.,0.,1.)) 
+        #         # attack_log_probs = F.log_softmax(attack_logits, dim=-1)
+        #         selected = attack_logits[range(len(attack_logits)), y.view(-1)] 
+        #         loss = -selected.sum() * args.adver_scale 
+        #         loss.backward()
+        #         grad_sign = delta.grad.data.detach().clone()
+        #         # delta.grad.data.zero_()
+        #     mean = mean.float() + grad_sign.float()
 
         return mean
 
@@ -169,9 +182,9 @@ def main():
     while count * args.batch_size < args.num_samples:
         x, y = next(data)     
         x, y = x.to(dist_util.dev()), y.to(dist_util.dev())
-        mask = grad_cam((x+1)/2.)
+        mask = grad_cam((x+1)/2.).unsqueeze(1)
         pgd_x = diffuson_pgd(x, y, attack_model, nb_iter=args.nb_iter,)
-        model_kwargs = {"guide_x":pgd_x, "y":y}
+        model_kwargs = {"guide_x":pgd_x, "y":y, "mask":mask}
         sample = diffusion.p_sample_loop(
             model_fn,
             (args.batch_size, 3, args.image_size, args.image_size),
@@ -180,7 +193,6 @@ def main():
             cond_fn=cond_fn,
             device=dist_util.dev(),
             start_t=args.start_t,
-            mask=mask,
         )
         sample = th.clamp(sample,-1.,1.)
 
