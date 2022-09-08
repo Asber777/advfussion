@@ -32,7 +32,7 @@ def create_argparser():
         attack_model_name= "Standard_R50", #"Salman2020Do_50_2"
         attack_model_type='Linf',
         generate_scale=1.0,
-        adver_scale=5.0,
+        adver_scale=0.1,
         ssim_scale=0,
         lpips_scale=0, 
         seed=777,
@@ -78,12 +78,13 @@ def main():
     if args.use_fp16: model.convert_to_fp16()
     model.eval()
 
-    classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
-    classifier.load_state_dict(
-        dist_util.load_state_dict(args.classifier_path, map_location="cpu"))
-    classifier.to(dist_util.dev())
-    if args.classifier_use_fp16: classifier.convert_to_fp16()
-    classifier.eval()
+    classifier = None
+    # classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
+    # classifier.load_state_dict(
+    #     dist_util.load_state_dict(args.classifier_path, map_location="cpu"))
+    # classifier.to(dist_util.dev())
+    # if args.classifier_use_fp16: classifier.convert_to_fp16()
+    # classifier.eval()
 
     attack_model = load_model(model_name=args.attack_model_name, 
         dataset='imagenet', threat_model=args.attack_model_type)
@@ -93,22 +94,23 @@ def main():
     # loss_fn_alex = loss_fn_alex.to(dist_util.dev())
 
     data = load_imagenet_batch(args.batch_size, '/root/hhtpro/123/imagenet')
-    writer = SummaryWriter(logger.get_dir())
+    # writer = SummaryWriter(logger.get_dir())
 
     map_i_s = get_idex2name_map(INDEX2NAME_MAP_PATH)
     mapname = lambda predict: [map_i_s[i] for i in predict.cpu().numpy()]
     # get_grid = lambda pic: make_grid(pic.detach().clone(), args.batch_size, normalize=True)
 
-    assert math.log(args.down_N, 2).is_integer()
-    shape = (args.batch_size, 3, args.image_size, args.image_size)
-    shape_d = (args.batch_size, 3, int(args.image_size / args.down_N), int(args.image_size / args.down_N))
-    down = Resizer(shape, 1 / args.down_N).to(next(model.parameters()).device)
-    up = Resizer(shape_d, args.down_N).to(next(model.parameters()).device)
-    resizers = (down, up)
+    # assert math.log(args.down_N, 2).is_integer()
+    # shape = (args.batch_size, 3, args.image_size, args.image_size)
+    # shape_d = (args.batch_size, 3, int(args.image_size / args.down_N), int(args.image_size / args.down_N))
+    # down = Resizer(shape, 1 / args.down_N).to(next(model.parameters()).device)
+    # up = Resizer(shape_d, args.down_N).to(next(model.parameters()).device)
+    # resizers = (down, up)
 
     def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, mean=None, variance=None,  pred_xstart=None, **kwargs):
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
         
+        # ILVR: 
         # if time > args.ranget1 and guide_x_t is not None and resizers is not None:
         #     down, up = resizers
         #     if time > args.range_t1: 
@@ -140,12 +142,12 @@ def main():
                 delta.requires_grad_()
                 tmpx = pred_xstart.detach().clone() + delta # range from -1~1
                 attack_logits = attack_model(th.clamp((tmpx+1)/2.,0.,1.)) 
-                attack_log_probs = F.log_softmax(attack_logits, dim=-1)
-                selected = attack_log_probs[range(len(attack_logits)), y.view(-1)] 
-                loss = - selected.sum() * args.adver_scale 
+                # attack_log_probs = F.log_softmax(attack_logits, dim=-1)
+                selected = attack_logits[range(len(attack_logits)), y.view(-1)] 
+                loss = -selected.sum() * args.adver_scale 
                 loss.backward()
-                grad_sign = delta.grad.data 
-                delta.grad.data.zero_()
+                grad_sign = delta.grad.data.detach().clone()
+                # delta.grad.data.zero_()
             mean = mean.float() + grad_sign.float()
 
         return mean
@@ -162,6 +164,7 @@ def main():
     seed_torch(args.seed)
     while count * args.batch_size < args.num_samples:
         x, y = next(data)
+        # 送进去之前先PGD一下~
         x, y = x.to(dist_util.dev()), y.to(dist_util.dev())
         model_kwargs = {"guide_x":x, "y":y}
         sample = diffusion.p_sample_loop(
@@ -177,24 +180,35 @@ def main():
 
         num = (count+1) * args.batch_size
         logger.log(f"created {num} samples")
+        logger.log(
+            f'original label of sample: {y.cpu().numpy()},'+
+            f'{[map_i_s[i] for i in y.cpu().numpy()]}')
 
-        at_predict = attack_model((sample+1)/2).argmax(dim=-1)
-        attack_acc += sum(at_predict != y)
-        cl_predict = classifier(sample, th.zeros_like(y)).argmax(dim=-1)
-        attack_clas_acc += sum(cl_predict != y)
+        if attack_model is not None:
+            at_predict = attack_model((sample+1)/2).argmax(dim=-1)
+            attack_acc += sum(at_predict != y)
+            logger.log(
+                f'predict of attack_model: {at_predict.cpu().numpy()}, '+
+                f'{mapname(at_predict)}')
+            logger.log(f'fool attck_model: {attack_acc/num};')
 
-        logger.log(f'original label of sample: {y.cpu().numpy()}, {[map_i_s[i] for i in y.cpu().numpy()]}')
-        logger.log(f'predict of attack_model: {at_predict.cpu().numpy()}, {mapname(at_predict)}')
-        logger.log(f'predict of classifier: {cl_predict.cpu().numpy()}, {mapname(cl_predict)}')
-        logger.log(f'fool attck_model: {attack_acc/num}; fool classifier: {attack_clas_acc/num}')
+        if classifier is not None:
+            cl_predict = classifier(sample, th.zeros_like(y)).argmax(dim=-1)
+            attack_clas_acc += sum(cl_predict != y)
+            logger.log(
+                f'predict of classifier: {cl_predict.cpu().numpy()}, '+
+                f'{mapname(cl_predict)}')
+            logger.log(f' fool classifier: {attack_clas_acc/num}')
+
         for i in range(args.batch_size):
-            out_path = os.path.join(logger.get_dir(),
-                                    f"{str(count * args.batch_size + i).zfill(5)}.png")
-            utils.save_image(sample[i].unsqueeze(0), out_path, nrow=1, normalize=True, range=(-1, 1),)
+            out_path = os.path.join(logger.get_dir(), 
+                f"{str(count * args.batch_size + i).zfill(5)}.png")
+            utils.save_image(sample[i].unsqueeze(0), 
+                out_path, nrow=1, normalize=True, range=(-1, 1),)
         count += 1
+    
     dist.barrier()
     logger.log("sampling complete")
-
 
 if __name__ == "__main__":
     main()
