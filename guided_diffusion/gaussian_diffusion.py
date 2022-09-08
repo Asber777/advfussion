@@ -314,7 +314,7 @@ class GaussianDiffusion:
         elif self.model_mean_type in [ModelMeanType.START_X, ModelMeanType.EPSILON]:
             if self.model_mean_type == ModelMeanType.START_X:
                 pred_xstart = process_xstart(model_output)
-            else:
+            else: 
                 # 我们是这种 预测eps, 下面这个居然可以预测x0 也的确是 直接拿xt rescale一下减去相关的噪声大小
                 # eps是模型的输出 model_output 下面这个可以求出预测的原图是啥
                 pred_xstart = process_xstart(
@@ -376,9 +376,7 @@ class GaussianDiffusion:
 
         This uses the conditioning strategy from Shl-Dickstein et al. (2015).
         """
-        shape = model_kwargs["guide_x"].shape
-        model_kwargs["guide_x_t"] = self.q_sample(model_kwargs["guide_x"], t,
-            th.randn(*shape, device=x.device))
+        model_kwargs["guide_x_t"] = self.q_sample(model_kwargs["guide_x"], t,)
         new_mean = cond_fn(x, self._scale_timesteps(t), **model_kwargs, **p_mean_var)
         # new_mean = (
         #     p_mean_var["mean"].float() + p_mean_var["variance"] * gradient.float()
@@ -470,7 +468,6 @@ class GaussianDiffusion:
         model_kwargs=None,
         device=None,
         progress=False,
-        back_fn=None, 
         start_t=None,
     ):
         """
@@ -503,7 +500,6 @@ class GaussianDiffusion:
             model_kwargs=model_kwargs,
             device=device,
             progress=progress,
-            back_fn=back_fn, 
             start_t=start_t,
         ):
             final = sample
@@ -521,7 +517,6 @@ class GaussianDiffusion:
         model_kwargs=None,
         device=None,
         progress=False,
-        back_fn=None,
         start_t=None, 
     ):
         """
@@ -540,7 +535,7 @@ class GaussianDiffusion:
         # else:
         #     img = th.randn(*shape, device=device) # 这题就是从0开始... 
         if start_t != None:
-            t = th.tensor([start_t] * shape[0], device=device)
+            t = th.tensor([start_t-1] * shape[0], device=device)
             img = self.q_sample(model_kwargs["guide_x"], t,)
             indices = list(range(start_t))[::-1]
         else:
@@ -670,7 +665,6 @@ class GaussianDiffusion:
         device=None,
         progress=False,
         eta=0.0,
-        back_fn=None, 
     ):
         """
         Generate samples from the model using DDIM.
@@ -689,7 +683,6 @@ class GaussianDiffusion:
             device=device,
             progress=progress,
             eta=eta,
-            back_fn=back_fn,
         ):
             final = sample
         return final["sample"]
@@ -706,7 +699,6 @@ class GaussianDiffusion:
         device=None,
         progress=False,
         eta=0.0,
-        back_fn=None,
     ):
         """
         Use DDIM to sample from the model and yield intermediate samples from
@@ -743,9 +735,6 @@ class GaussianDiffusion:
                     eta=eta,
                 )
 
-                #### ILVR ####
-                if back_fn:
-                    pass
                 yield out
                 img = out["sample"]
 

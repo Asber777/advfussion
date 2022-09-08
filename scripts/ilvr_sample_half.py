@@ -17,6 +17,51 @@ from guided_diffusion.script_util import *
 from torchvision import utils
 import math
 
+def create_argparser():
+    defaults = dict(
+        result_dir='/root/hhtpro/123/result',
+        describe="ilvr_nocond",
+        clip_denoised=True,
+        num_samples=5,
+        batch_size=5,
+        down_N=8,
+        range_t1=500,
+        range_t2=1000,
+        model_path="guided-diffusion/models/256x256_diffusion.pt",
+        classifier_path="guided-diffusion/models/256x256_classifier.pt",
+        attack_model_name= "Standard_R50", #"Salman2020Do_50_2"
+        attack_model_type='Linf',
+        generate_scale=1.0,
+        adver_scale=5.0,
+        ssim_scale=0,
+        lpips_scale=0, 
+        seed=777,
+        start_t=70, 
+    ) 
+    defaults.update(model_and_diffusion_defaults())
+    defaults.update(classifier_defaults())
+    model_flags = dict(
+        use_ddim=False,
+        timestep_respacing=[100],
+        image_size=256,
+        attention_resolutions="32,16,8",
+        class_cond=True, 
+        diffusion_steps=1000,
+        learn_sigma=True, 
+        dropout=0.0,
+        noise_schedule="linear",
+        num_channels=256,
+        num_head_channels=64,
+        num_res_blocks=2,
+        resblock_updown=True,
+        use_fp16=True,
+        use_scale_shift_norm=True,
+        )
+    defaults.update(model_flags)
+    parser = argparse.ArgumentParser() 
+    add_dict_to_argparser(parser, defaults)
+    return parser
+
 def main():
     args = create_argparser().parse_args()
     dist_util.setup_dist()
@@ -24,6 +69,7 @@ def main():
     logger.configure(dir)
     save_args(logger.get_dir(), args)
     shutil.copy(os.path.realpath(__file__), logger.get_dir())
+
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys()))
     model.load_state_dict(
@@ -43,8 +89,8 @@ def main():
         dataset='imagenet', threat_model=args.attack_model_type)
     attack_model = attack_model.to(dist_util.dev())
 
-    loss_fn_alex = lpips.LPIPS(net='alex')
-    loss_fn_alex = loss_fn_alex.to(dist_util.dev())
+    # loss_fn_alex = lpips.LPIPS(net='alex')
+    # loss_fn_alex = loss_fn_alex.to(dist_util.dev())
 
     data = load_imagenet_batch(args.batch_size, '/root/hhtpro/123/imagenet')
     writer = SummaryWriter(logger.get_dir())
@@ -60,34 +106,22 @@ def main():
     up = Resizer(shape_d, args.down_N).to(next(model.parameters()).device)
     resizers = (down, up)
 
-    def back_fn(x, guide_x=None,  time=None):
-        '''
-        x is original varia out["sample"]
-        y is original label
-        guide_x is what we wish it looks like
-        guide_y is what we wish attack model predict is 
-        time is time.
-        '''
-        assert guide_x is not None
-        assert time is not None
-        if resizers is not None:
-            down, up = resizers
-            if time > args.range_t1: 
-                x = x - up(down(x)) + up(down(guide_x))
-        return x
-
-    def cond_fn(x, t, y=None, guide_x=None, guide_y=None, mean=None, guide_x_t=None, **kwargs):
+    def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, mean=None, variance=None,  pred_xstart=None, **kwargs):
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
-        mean = back_fn(mean, guide_x_t, time)
+        
+        # if time > args.ranget1 and guide_x_t is not None and resizers is not None:
+        #     down, up = resizers
+        #     if time > args.range_t1: 
+        #         mean = mean - up(down(mean)) + up(down(guide_x_t))
 
-        with th.enable_grad():
-            x_in = mean.detach().requires_grad_(True)# "mean" used to be "x" 
+        # with th.enable_grad():
+        #     x_in = mean.detach().requires_grad_(True)# "mean" used to be "x" 
 
-            logits = classifier(x_in, t)
-            log_probs = F.log_softmax(logits, dim=-1)
-            selected = log_probs[range(len(logits)), y.view(-1)] 
+        #     logits = classifier(x_in, t)
+        #     log_probs = F.log_softmax(logits, dim=-1)
+        #     selected = log_probs[range(len(logits)), y.view(-1)] 
 
-            loss = selected.sum() * args.generate_scale
+        #     loss = selected.sum() * args.generate_scale
 
             # # range from 0~1 but x_in maybe not
             # loss += ssim((guide_x+1)/2, (x_in+1)/2, 
@@ -96,30 +130,28 @@ def main():
             # # range from -1~1 but x_in maybe not
             # loss -= loss_fn_alex.forward(x_in, guide_x).sum() * args.lpips_scale
 
-            if time < args.range_t2:
-                attack_logits = attack_model(th.clamp((x_in+1)/2.,0.,1.)) # 所以这里输入也是不对的... 
-                # print(time, th.topk(attack_logits, dim=-1, k=3))
+            # gradient = th.autograd.grad(loss, x_in)[0]
+
+        # mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
+
+        if time < args.range_t2:
+            delta = th.zeros_like(x)
+            with th.enable_grad():
+                delta.requires_grad_()
+                tmpx = pred_xstart.detach().clone() + delta # range from -1~1
+                attack_logits = attack_model(th.clamp((tmpx+1)/2.,0.,1.)) 
                 attack_log_probs = F.log_softmax(attack_logits, dim=-1)
                 selected = attack_log_probs[range(len(attack_logits)), y.view(-1)] 
-                loss -= selected.sum() * args.adver_scale
+                loss = - selected.sum() * args.adver_scale 
+                loss.backward()
+                grad_sign = delta.grad.data 
+                delta.grad.data.zero_()
+            mean = mean.float() + grad_sign.float()
 
-            gradient = th.autograd.grad(loss, x_in)[0]
-
-        mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
-
-        # PGD
-        # if time < args.range_t2:
-            
-        
-        
         return mean
 
     def model_fn(x, t, y=None, **kwargs):
         assert y is not None
-        # if you want to perturb here change y 
-        time = int(t[0].detach().cpu())
-        if time > args.range_t3:
-            y = (y + 3) %1000
         return model(x, t, y if args.class_cond else None)
 
 
@@ -129,29 +161,25 @@ def main():
     attack_clas_acc = 0
     seed_torch(args.seed)
     while count * args.batch_size < args.num_samples:
-        model_kwargs = {}
         x, y = next(data)
         x, y = x.to(dist_util.dev()), y.to(dist_util.dev())
-        model_kwargs["guide_x"] = x
-        model_kwargs['y'] = y
-        model_kwargs['guide_y'] = (y.detach().clone()+30)%1000
-        
+        model_kwargs = {"guide_x":x, "y":y}
         sample = diffusion.p_sample_loop(
             model_fn,
             (args.batch_size, 3, args.image_size, args.image_size),
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
             cond_fn=cond_fn,
-            # back_fn=back_fn,
             device=dist_util.dev(),
+            start_t=args.start_t,
         )
         sample = th.clamp(sample,-1.,1.)
-        count += 1
-        num = count * args.batch_size
+
+        num = (count+1) * args.batch_size
         logger.log(f"created {num} samples")
+
         at_predict = attack_model((sample+1)/2).argmax(dim=-1)
         attack_acc += sum(at_predict != y)
-
         cl_predict = classifier(sample, th.zeros_like(y)).argmax(dim=-1)
         attack_clas_acc += sum(cl_predict != y)
 
@@ -159,66 +187,13 @@ def main():
         logger.log(f'predict of attack_model: {at_predict.cpu().numpy()}, {mapname(at_predict)}')
         logger.log(f'predict of classifier: {cl_predict.cpu().numpy()}, {mapname(cl_predict)}')
         logger.log(f'fool attck_model: {attack_acc/num}; fool classifier: {attack_clas_acc/num}')
-        
         for i in range(args.batch_size):
             out_path = os.path.join(logger.get_dir(),
                                     f"{str(count * args.batch_size + i).zfill(5)}.png")
-            utils.save_image(
-                sample[i].unsqueeze(0),
-                out_path,
-                nrow=1,
-                normalize=True,
-                range=(-1, 1),
-            )
-
+            utils.save_image(sample[i].unsqueeze(0), out_path, nrow=1, normalize=True, range=(-1, 1),)
+        count += 1
     dist.barrier()
     logger.log("sampling complete")
-
-def create_argparser():
-    defaults = dict(
-        result_dir='/root/hhtpro/123/result',
-        describe="ilvr_nocond",
-        clip_denoised=True,
-        num_samples=100,
-        batch_size=5,
-        down_N=8,
-        range_t1=500,
-        range_t2=1000,
-        range_t3=1100,
-        # model_path="guided-diffusion/models/256x256_diffusion.pt",
-        model_path="guided-diffusion/models/256x256_diffusion_uncond.pt",
-        classifier_path="guided-diffusion/models/256x256_classifier.pt",
-        attack_model_name= "Standard_R50", #"Salman2020Do_50_2"
-        attack_model_type='Linf',
-        generate_scale=1.0,
-        adver_scale=15,
-        ssim_scale=0,
-        lpips_scale=0,#1000,
-        seed=777,
-    ) 
-    defaults.update(model_and_diffusion_defaults())
-    defaults.update(classifier_defaults())
-    model_flags = dict(
-        use_ddim=False,
-        timestep_respacing=[100],
-        image_size=256,
-        attention_resolutions="32,16,8",
-        class_cond=False, 
-        diffusion_steps=1000,
-        learn_sigma=True, 
-        dropout=0.0,
-        noise_schedule="linear",
-        num_channels=256,
-        num_head_channels=64,
-        num_res_blocks=2,
-        resblock_updown=True,
-        use_fp16=True,
-        use_scale_shift_norm=True,
-        )
-    defaults.update(model_flags)
-    parser = argparse.ArgumentParser() 
-    add_dict_to_argparser(parser, defaults)
-    return parser
 
 
 if __name__ == "__main__":

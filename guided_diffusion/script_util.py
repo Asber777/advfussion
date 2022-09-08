@@ -162,8 +162,6 @@ def diffusion_defaults():
         predict_xstart=False,
         rescale_timesteps=False,
         rescale_learned_sigmas=False,
-        half_start=False, 
-        start_t=1000,
     )
 
 
@@ -238,8 +236,6 @@ def create_model_and_diffusion(
     resblock_updown,
     use_fp16,
     use_new_attention_order,
-    half_start, 
-    start_t,
 ):
     model = create_model(
         image_size,
@@ -268,8 +264,6 @@ def create_model_and_diffusion(
         rescale_timesteps=rescale_timesteps,
         rescale_learned_sigmas=rescale_learned_sigmas,
         timestep_respacing=timestep_respacing,
-        half_start=half_start, 
-        start_t=start_t,
     )
     return model, diffusion
 
@@ -541,8 +535,6 @@ def create_gaussian_diffusion(
     rescale_timesteps=False,
     rescale_learned_sigmas=False,
     timestep_respacing="",
-    half_start=False,
-    start_t=1000,
 ):
     betas = gd.get_named_beta_schedule(noise_schedule, steps)
     if use_kl:
@@ -553,27 +545,25 @@ def create_gaussian_diffusion(
         loss_type = gd.LossType.MSE
     if not timestep_respacing:
         timestep_respacing = [steps]
-    if not half_start:
-        return SpacedDiffusion(
-            use_timesteps=space_timesteps(steps, timestep_respacing),
-            betas=betas,
-            model_mean_type=(
-                gd.ModelMeanType.EPSILON if not predict_xstart else gd.ModelMeanType.START_X
-            ),
-            model_var_type=(
-                (
-                    gd.ModelVarType.FIXED_LARGE
-                    if not sigma_small
-                    else gd.ModelVarType.FIXED_SMALL
-                )
-                if not learn_sigma
-                else gd.ModelVarType.LEARNED_RANGE
-            ),
-            loss_type=loss_type,
-            rescale_timesteps=rescale_timesteps,
-        )
-    else:
-        pass
+
+    return SpacedDiffusion(
+        use_timesteps=space_timesteps(steps, timestep_respacing),
+        betas=betas,
+        model_mean_type=(
+            gd.ModelMeanType.EPSILON if not predict_xstart else gd.ModelMeanType.START_X
+        ),
+        model_var_type=(
+            (
+                gd.ModelVarType.FIXED_LARGE
+                if not sigma_small
+                else gd.ModelVarType.FIXED_SMALL
+            )
+            if not learn_sigma
+            else gd.ModelVarType.LEARNED_RANGE
+        ),
+        loss_type=loss_type,
+        rescale_timesteps=rescale_timesteps,
+    )
 
 
 def add_dict_to_argparser(parser, default_dict):
