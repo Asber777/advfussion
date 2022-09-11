@@ -26,8 +26,8 @@ def create_argparser():
         num_samples=50,
         batch_size=5,
         down_N=8,
-        range_t1=500,
-        range_t2=1000,
+        range_t1=40,
+        range_t2=100,
         model_path="guided-diffusion/models/256x256_diffusion.pt",
         classifier_path="guided-diffusion/models/256x256_classifier.pt",
         attack_model_name= "Standard_R50", #"Standard_R50", #"Salman2020Do_50_2"
@@ -106,12 +106,13 @@ def main():
     mapname = lambda predict: [map_i_s[i] for i in predict.cpu().numpy()]
     # get_grid = lambda pic: make_grid(pic.detach().clone(), args.batch_size, normalize=True)
 
-    # assert math.log(args.down_N, 2).is_integer()
-    # shape = (args.batch_size, 3, args.image_size, args.image_size)
-    # shape_d = (args.batch_size, 3, int(args.image_size / args.down_N), int(args.image_size / args.down_N))
-    # down = Resizer(shape, 1 / args.down_N).to(next(model.parameters()).device)
-    # up = Resizer(shape_d, args.down_N).to(next(model.parameters()).device)
-    # resizers = (down, up)
+    resizers = None
+    assert math.log(args.down_N, 2).is_integer()
+    shape = (args.batch_size, 3, args.image_size, args.image_size)
+    shape_d = (args.batch_size, 3, int(args.image_size / args.down_N), int(args.image_size / args.down_N))
+    down = Resizer(shape, 1 / args.down_N).to(next(model.parameters()).device)
+    up = Resizer(shape_d, args.down_N).to(next(model.parameters()).device)
+    resizers = (down, up)
 
     def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, 
             mean=None, variance=None,  pred_xstart=None, mask=None, **kwargs):
@@ -121,15 +122,7 @@ def main():
         guide_x: pgd_x0
         guide_x_t: pgd_x0_t
         '''
-        time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
-        
         '''
-        # ILVR: 
-        # if time > args.ranget1 and guide_x_t is not None and resizers is not None:
-        #     down, up = resizers
-        #     if time > args.range_t1: 
-        #         mean = mean - up(down(mean)) + up(down(guide_x_t))
-
         # with th.enable_grad():
         #     x_in = mean.detach().requires_grad_(True)# "mean" used to be "x" 
 
@@ -150,7 +143,7 @@ def main():
         # mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
 
         '''
-
+        time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
         if time < args.range_t2:
             delta = th.zeros_like(x)
             with th.enable_grad():
@@ -164,13 +157,11 @@ def main():
                 grad_sign = delta.grad.data.detach().clone()
                 # delta.grad.data.zero_()
             mean = mean.float() + grad_sign.float()
-
         return mean
 
     def model_fn(x, t, y=None, **kwargs):
         assert y is not None
         return model(x, t, y if args.class_cond else None)
-
 
     logger.log("creating samples...")
     count = 0
@@ -182,7 +173,8 @@ def main():
         x, y = x.to(dist_util.dev()), y.to(dist_util.dev())
         mask = grad_cam((x+1)/2.).unsqueeze(1)
         pgd_x = diffuson_pgd(x, y, attack_model, nb_iter=args.nb_iter,)
-        model_kwargs = {"guide_x":pgd_x, "y":y, "mask":mask}
+        model_kwargs = {"guide_x":pgd_x, "y":y, "mask":mask, 
+            "resizer":resizers,'ranget1':args.range_t1}
         sample = diffusion.p_sample_loop(
             model_fn,
             (args.batch_size, 3, args.image_size, args.image_size),
@@ -191,6 +183,7 @@ def main():
             cond_fn=cond_fn,
             device=dist_util.dev(),
             start_t=args.start_t,
+            progress=True,
         )
         sample = th.clamp(sample,-1.,1.)
 
