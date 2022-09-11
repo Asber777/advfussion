@@ -376,7 +376,10 @@ class GaussianDiffusion:
 
         This uses the conditioning strategy from Shl-Dickstein et al. (2015).
         """
-        model_kwargs["guide_x_t"] = self.q_sample(model_kwargs["guide_x"], t,)
+        # if int(t[0].detach().cpu())>=model_kwargs['pre_t']:
+        #     model_kwargs["guide_x_t"] = self.q_sample(model_kwargs["guide_x"], t-model_kwargs['pre_t'],)
+        # else:
+        #     model_kwargs["guide_x_t"] = model_kwargs["guide_x"]
         new_mean = cond_fn(x, self._scale_timesteps(t), **model_kwargs, **p_mean_var)
         # new_mean = (
         #     p_mean_var["mean"].float() + p_mean_var["variance"] * gradient.float()
@@ -437,6 +440,16 @@ class GaussianDiffusion:
                  - 'sample': a random sample from the model.
                  - 'pred_xstart': a prediction of x_0.
         """
+        # Repaint在这里加的: START
+        original_maks = th.where(model_kwargs['mask'] > 0.5, 1.,0.)
+        alpha_cumprod = _extract_into_tensor(self.alphas_cumprod, t, x.shape)
+        gt_weight = th.sqrt(alpha_cumprod)
+        gt_part = gt_weight * model_kwargs['guide_x']
+        noise_weight = th.sqrt((1 - alpha_cumprod))
+        noise_part = noise_weight * th.randn_like(x)
+        weighed_gt = gt_part + noise_part
+        x = (original_maks * weighed_gt + (1 - original_maks) * x)
+        # Repaint在这里加的: END, 不然会有很小的噪声... 
         out = self.p_mean_variance(
             model,
             x,
@@ -455,6 +468,11 @@ class GaussianDiffusion:
             )
         # 这里的th.exp(0.5 * out["log_variance"]) 其实就是标准差xt−1=(1/αt)*(xt−βtϵθ(xt,t))+σt z
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        # guide_x_t = self.q_sample(model_kwargs["guide_x"], 
+        #     th.max(t-model_kwargs['pre_t'], th.zeros_like(t)),)
+        # original_maks = th.where(model_kwargs['mask'] > 0.5, 1.,0.)
+        # generate_maks = th.where(model_kwargs['mask'] <= 0.5, 1.,0.)
+        # sample = guide_x_t * original_maks + generate_maks * sample
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
     def p_sample_loop(

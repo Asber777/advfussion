@@ -881,24 +881,24 @@ class EncoderUNetModel(nn.Module):
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
 
         results = []
-        hidden = []
+        # hidden = []
         h = x.type(self.dtype)
         for i, module in enumerate(self.input_blocks):
             h = module(h, emb)
             if self.pool.startswith("spatial"):
                 results.append(h.type(x.dtype).mean(dim=(2, 3)))
-            if get_hidden and i in hidden_index: # 20层
-                hidden.append(h)
+            # if get_hidden and i in hidden_index: # 20层
+            #     hidden.append(h)
         h = self.middle_block(h, emb)
-        if get_middle: hidden.append(h)
+        # if get_middle: hidden.append(h)
         if self.pool.startswith("spatial"):
             results.append(h.type(x.dtype).mean(dim=(2, 3)))
             h = th.cat(results, axis=-1)
-            if get_hidden or get_middle:
-                return self.out(h), hidden
+            # if get_hidden or get_middle:
+            #     return self.out(h), hidden
             return self.out(h)
         else:
-            if get_hidden or get_middle:
-                return self.out(h), hidden
+            # if get_hidden or get_middle:
+            #     return self.out(h), hidden
             h = h.type(x.dtype)
             return self.out(h)

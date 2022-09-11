@@ -21,25 +21,26 @@ import math
 def create_argparser():
     defaults = dict(
         result_dir='/root/hhtpro/123/result',
-        describe="onlyhalf_mask",
+        describe="maskandattack",
         clip_denoised=True,
-        num_samples=5,
+        num_samples=50,
         batch_size=5,
         down_N=8,
         range_t1=500,
         range_t2=1000,
         model_path="guided-diffusion/models/256x256_diffusion.pt",
         classifier_path="guided-diffusion/models/256x256_classifier.pt",
-        attack_model_name= "Salman2020Do_50_2", #"Standard_R50", #"Salman2020Do_50_2"
+        attack_model_name= "Standard_R50", #"Standard_R50", #"Salman2020Do_50_2"
         attack_model_type='Linf',
         generate_scale=1.0,
-        adver_scale=0.05,
+        adver_scale=0.1,
         ssim_scale=0,
         lpips_scale=0, 
         seed=777,
         start_t=60,  # must <= max(timestep_respacing) ? currently
         nb_iter=10,
         threshold=0.5,
+        pre_t=5,
     ) 
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())
@@ -149,23 +150,20 @@ def main():
         # mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
 
         '''
-        original_maks = th.where(mask > args.threshold, 1.,0.)
-        generate_maks = th.where(mask <= args.threshold, 1.,0.)
-        mean = guide_x_t * original_maks + generate_maks * mean
 
-        # if time < args.range_t2:
-        #     delta = th.zeros_like(x)
-        #     with th.enable_grad():
-        #         delta.requires_grad_()
-        #         tmpx = pred_xstart.detach().clone() + delta # range from -1~1
-        #         attack_logits = attack_model(th.clamp((tmpx+1)/2.,0.,1.)) 
-        #         # attack_log_probs = F.log_softmax(attack_logits, dim=-1)
-        #         selected = attack_logits[range(len(attack_logits)), y.view(-1)] 
-        #         loss = -selected.sum() * args.adver_scale 
-        #         loss.backward()
-        #         grad_sign = delta.grad.data.detach().clone()
-        #         # delta.grad.data.zero_()
-        #     mean = mean.float() + grad_sign.float()
+        if time < args.range_t2:
+            delta = th.zeros_like(x)
+            with th.enable_grad():
+                delta.requires_grad_()
+                tmpx = pred_xstart.detach().clone() + delta # range from -1~1
+                attack_logits = attack_model(th.clamp((tmpx+1)/2.,0.,1.)) 
+                # attack_log_probs = F.log_softmax(attack_logits, dim=-1)
+                selected = attack_logits[range(len(attack_logits)), y.view(-1)] 
+                loss = -selected.sum() * args.adver_scale 
+                loss.backward()
+                grad_sign = delta.grad.data.detach().clone()
+                # delta.grad.data.zero_()
+            mean = mean.float() + grad_sign.float()
 
         return mean
 
