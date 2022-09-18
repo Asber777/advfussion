@@ -158,7 +158,7 @@ class GaussianDiffusion:
         self.sqrt_recipm1_alphas_cumprod = np.sqrt(1.0 / self.alphas_cumprod - 1) # sqrt( 1/ {(bar αt)^2 -1} )
 
         # calculations for posterior q(x_{t-1} | x_t, x_0)  DDPM论文公式6
-        self.posterior_variance = (
+        self.posterior_variance = ( # 5e-05 ~0.01
             betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
         )#q(x_{t-1} | x_t, x_0)的方差大小
         # log calculation clipped because the posterior variance is 0 at the
@@ -438,13 +438,14 @@ class GaussianDiffusion:
         """
         # Repaint在这里加的: START
         weighed_gt = self.q_sample(model_kwargs["guide_x"], t)
-        if model_kwargs.get('resizers', None) != None:
+        if model_kwargs.get('resizer', None) != None:
             time = int(t[0].detach().cpu())
-            if time > model_kwargs.get('range_t1', 0):
-                down, up = model_kwargs['resizers']
+            if model_kwargs.get('range_t1') and time > model_kwargs['range_t1']:
+                down, up = model_kwargs['resizer']
                 x = x - up(down(x)) + up(down(weighed_gt))
-        original_maks = th.where(model_kwargs['mask'] > 0.5, 1.,0.)
-        x = (original_maks * weighed_gt + (1 - original_maks) * x)
+        if model_kwargs.get('mask', None) != None:
+            original_maks = th.where(model_kwargs['mask'] > model_kwargs['threshold'], 1.,0.)
+            x = (original_maks * weighed_gt + (1 - original_maks) * x)
         # Repaint在这里加的: END, 不然会有很小的噪声... 
         out = self.p_mean_variance(
             model,

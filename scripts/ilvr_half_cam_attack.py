@@ -20,37 +20,45 @@ import math
 
 def create_argparser():
     defaults = dict(
-        result_dir='/root/hhtpro/123/result',
-        describe="maskandattack",
-        clip_denoised=True,
-        num_samples=50,
+        describe="checkx0", # mask_ilvr_half_attack
+        num_samples=5,
         batch_size=5,
+        # ilvr 
+        use_ilvr=False,
         down_N=8,
-        range_t1=40,
-        range_t2=100,
-        model_path="guided-diffusion/models/256x256_diffusion.pt",
-        classifier_path="guided-diffusion/models/256x256_classifier.pt",
-        attack_model_name= "Standard_R50", #"Standard_R50", #"Salman2020Do_50_2"
-        attack_model_type='Linf',
-        generate_scale=1.0,
-        adver_scale=0.1,
-        ssim_scale=0,
-        lpips_scale=0, 
-        seed=777,
-        start_t=60,  # must <= max(timestep_respacing) ? currently
-        nb_iter=10,
+        range_t1=80, # 这个是在0~timestep_respacing之间 决定什么时候ilvr
+        # adver
+        use_adver=False,
+        range_t2=1000, # 这个是在0~diffusion_steps之间 决定什么时候攻击
+        attack_model_name= "Salman2020Do_50_2", #"Standard_R50", #"Salman2020Do_50_2"
+        adver_scale=1.8,
+        seed=666,
+        # half
+        use_half=False,
+        start_t=None,#100,  # must <= max(timestep_respacing) ? currently
+        # PGD at begin
+        nb_iter=20,
+        # CAM
+        use_cam=False,
         threshold=0.5,
-        pre_t=5,
     ) 
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())
     model_flags = dict(
         use_ddim=False,
         timestep_respacing=[100],
-        image_size=256,
-        attention_resolutions="32,16,8",
         class_cond=True, 
         diffusion_steps=1000,
+        )
+    unchange_flags = dict(
+        result_dir='/root/hhtpro/123/result',
+        clip_denoised=True,
+        image_size=256,
+        model_path="guided-diffusion/models/256x256_diffusion.pt",
+        classifier_path="guided-diffusion/models/256x256_classifier.pt",
+        attack_model_type='Linf',
+        # 
+        attention_resolutions="32,16,8",
         learn_sigma=True, 
         dropout=0.0,
         noise_schedule="linear",
@@ -60,8 +68,9 @@ def create_argparser():
         resblock_updown=True,
         use_fp16=True,
         use_scale_shift_norm=True,
-        )
+    )
     defaults.update(model_flags)
+    defaults.update(unchange_flags)
     parser = argparse.ArgumentParser() 
     add_dict_to_argparser(parser, defaults)
     return parser
@@ -81,74 +90,51 @@ def main():
     model.to(dist_util.dev())
     if args.use_fp16: model.convert_to_fp16()
     model.eval()
-
-    classifier = None
-    # classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
-    # classifier.load_state_dict(
-    #     dist_util.load_state_dict(args.classifier_path, map_location="cpu"))
-    # classifier.to(dist_util.dev())
-    # if args.classifier_use_fp16: classifier.convert_to_fp16()
-    # classifier.eval()
-
-    attack_model = load_model(model_name=args.attack_model_name, 
-        dataset='imagenet', threat_model=args.attack_model_type)
-    attack_model = attack_model.to(dist_util.dev())
-    layer_name = get_last_conv_name(attack_model)
-    grad_cam = GradCamPlusPlus(attack_model, layer_name)
-
-    # loss_fn_alex = lpips.LPIPS(net='alex')
-    # loss_fn_alex = loss_fn_alex.to(dist_util.dev())
-
+    
     data = load_imagenet_batch(args.batch_size, '/root/hhtpro/123/imagenet')
     # writer = SummaryWriter(logger.get_dir())
 
+    if args.use_adver:
+        attack_model = load_model(model_name=args.attack_model_name, 
+            dataset='imagenet', threat_model=args.attack_model_type)
+        attack_model = attack_model.to(dist_util.dev())
+    if args.use_cam:
+        layer_name = get_last_conv_name(attack_model)
+        grad_cam = GradCamPlusPlus(attack_model, layer_name)
+
     map_i_s = get_idex2name_map(INDEX2NAME_MAP_PATH)
     mapname = lambda predict: [map_i_s[i] for i in predict.cpu().numpy()]
-    # get_grid = lambda pic: make_grid(pic.detach().clone(), args.batch_size, normalize=True)
 
     resizers = None
-    assert math.log(args.down_N, 2).is_integer()
-    shape = (args.batch_size, 3, args.image_size, args.image_size)
-    shape_d = (args.batch_size, 3, int(args.image_size / args.down_N), int(args.image_size / args.down_N))
-    down = Resizer(shape, 1 / args.down_N).to(next(model.parameters()).device)
-    up = Resizer(shape_d, args.down_N).to(next(model.parameters()).device)
-    resizers = (down, up)
+    if args.use_ilvr:
+        assert math.log(args.down_N, 2).is_integer()
+        shape = (args.batch_size, 3, args.image_size, args.image_size)
+        shape_d = (args.batch_size, 3, int(args.image_size / args.down_N), int(args.image_size / args.down_N))
+        down = Resizer(shape, 1 / args.down_N).to(next(model.parameters()).device)
+        up = Resizer(shape_d, args.down_N).to(next(model.parameters()).device)
+        resizers = (down, up) # 现在把ilvr放在gaussian diffusion文件里执行
 
     def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, 
-            mean=None, variance=None,  pred_xstart=None, mask=None, **kwargs):
+            mean=None, variance=None,  pred_xstart=None, mask=None, threshold=None, **kwargs):
         '''
         x: x_{t+1}
         mean: x_{t}
         guide_x: pgd_x0
         guide_x_t: pgd_x0_t
-        '''
-        '''
-        # with th.enable_grad():
-        #     x_in = mean.detach().requires_grad_(True)# "mean" used to be "x" 
-
-        #     logits = classifier(x_in, t)
-        #     log_probs = F.log_softmax(logits, dim=-1)
-        #     selected = log_probs[range(len(logits)), y.view(-1)] 
-
-        #     loss = selected.sum() * args.generate_scale
-
-            # # range from 0~1 but x_in maybe not
-            # loss += ssim((guide_x+1)/2, (x_in+1)/2, 
-            #     data_range=1, size_average=True) * args.ssim_scale
-
-            # # range from -1~1 but x_in maybe not
-            # loss -= loss_fn_alex.forward(x_in, guide_x).sum() * args.lpips_scale
-
-            # gradient = th.autograd.grad(loss, x_in)[0]
-        # mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
-
-        '''
+        mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
+        '''        
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
-        if time < args.range_t2:
+        out_path = os.path.join(logger.get_dir(), 
+            f"pred_xstart{str(time)}.png")
+        utils.save_image(pred_xstart[0].unsqueeze(0), 
+            out_path, nrow=1, normalize=True, range=(-1, 1),)
+        
+        if args.use_adver and time < args.range_t2:
+            maks = th.where(model_kwargs['mask'] > model_kwargs['threshold'], 1.,0.)
             delta = th.zeros_like(x)
             with th.enable_grad():
                 delta.requires_grad_()
-                tmpx = pred_xstart.detach().clone() + delta # range from -1~1
+                tmpx = pred_xstart.detach().clone() + delta *(1-maks) # range from -1~1
                 attack_logits = attack_model(th.clamp((tmpx+1)/2.,0.,1.)) 
                 # attack_log_probs = F.log_softmax(attack_logits, dim=-1)
                 selected = attack_logits[range(len(attack_logits)), y.view(-1)] 
@@ -166,15 +152,14 @@ def main():
     logger.log("creating samples...")
     count = 0
     attack_acc = 0
-    attack_clas_acc = 0
     seed_torch(args.seed)
     while count * args.batch_size < args.num_samples:
         x, y = next(data)     
         x, y = x.to(dist_util.dev()), y.to(dist_util.dev())
-        mask = grad_cam((x+1)/2.).unsqueeze(1)
-        pgd_x = diffuson_pgd(x, y, attack_model, nb_iter=args.nb_iter,)
-        model_kwargs = {"guide_x":pgd_x, "y":y, "mask":mask, 
-            "resizer":resizers,'ranget1':args.range_t1}
+        mask = grad_cam((x+1)/2.).unsqueeze(1) if args.use_cam else None
+        x = diffuson_pgd(x, y, attack_model, nb_iter=args.nb_iter,) if args.use_adver else x
+        model_kwargs = {"guide_x":x, "y":y, "mask":mask, 
+            "resizer":resizers,'range_t1':args.range_t1, "threshold":args.threshold}
         sample = diffusion.p_sample_loop(
             model_fn,
             (args.batch_size, 3, args.image_size, args.image_size),
@@ -182,7 +167,7 @@ def main():
             model_kwargs=model_kwargs,
             cond_fn=cond_fn,
             device=dist_util.dev(),
-            start_t=args.start_t,
+            start_t=args.start_t if args.use_half else None,
             progress=True,
         )
         sample = th.clamp(sample,-1.,1.)
@@ -193,21 +178,13 @@ def main():
             f'original label of sample: {y.cpu().numpy()},'+
             f'{[map_i_s[i] for i in y.cpu().numpy()]}')
 
-        if attack_model is not None:
+        if args.use_adver:
             at_predict = attack_model((sample+1)/2).argmax(dim=-1)
             attack_acc += sum(at_predict != y)
             logger.log(
                 f'predict of attack_model: {at_predict.cpu().numpy()}, '+
                 f'{mapname(at_predict)}')
             logger.log(f'fool attck_model: {attack_acc/num};')
-
-        if classifier is not None:
-            cl_predict = classifier(sample, th.zeros_like(y)).argmax(dim=-1)
-            attack_clas_acc += sum(cl_predict != y)
-            logger.log(
-                f'predict of classifier: {cl_predict.cpu().numpy()}, '+
-                f'{mapname(cl_predict)}')
-            logger.log(f' fool classifier: {attack_clas_acc/num}')
 
         for i in range(args.batch_size):
             out_path = os.path.join(logger.get_dir(), 
@@ -218,7 +195,8 @@ def main():
     
     dist.barrier()
     logger.log("sampling complete")
-    grad_cam.remove_handlers()
+    if args.use_cam: 
+        grad_cam.remove_handlers()
 
 if __name__ == "__main__":
     main()
