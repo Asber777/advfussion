@@ -7,6 +7,8 @@ import lpips
 from torch import clamp
 import torch.nn.functional as F
 from robustbench.utils import load_model
+from guided_diffusion.data_model.architectures import get_architecture
+from guided_diffusion.data_model.my_loader import MyCustomDataset
 from guided_diffusion.resizer import Resizer
 from pytorch_msssim import ssim, ms_ssim
 from torch.utils.tensorboard import SummaryWriter
@@ -30,7 +32,7 @@ def create_argparser():
         # adver
         use_adver=False,
         range_t2=1000, # 这个是在0~diffusion_steps之间 决定什么时候攻击
-        attack_model_name= "Salman2020Do_50_2", #"Standard_R50", #"Salman2020Do_50_2"
+        attack_model_name="InceptionResnetV2",  # "Salman2020Do_50_2", #"Standard_R50", #"Salman2020Do_50_2"
         adver_scale=1.8,
         seed=666,
         # half
@@ -91,13 +93,23 @@ def main():
     if args.use_fp16: model.convert_to_fp16()
     model.eval()
     
-    data = load_imagenet_batch(args.batch_size, '/root/hhtpro/123/imagenet')
+    # data = load_imagenet_batch(args.batch_size, '/root/hhtpro/123/imagenet')
     # writer = SummaryWriter(logger.get_dir())
+    data = MyCustomDataset(img_path="/root/hhtpro/123/GA-Attack-main/data")
+    if args.distributed:
+        sampler = th.utils.data.distributed.DistributedSampler(data)
+    else:
+        sampler = th.utils.data.SequentialSampler(data)
+    attack_loader = th.utils.data.DataLoader(dataset=data,
+                                                batch_size=args.batch_size,
+                                                shuffle=False,
+                                                sampler=sampler, num_workers=8, pin_memory=True)
 
     if args.use_adver:
-        attack_model = load_model(model_name=args.attack_model_name, 
-            dataset='imagenet', threat_model=args.attack_model_type)
-        attack_model = attack_model.to(dist_util.dev())
+        attack_model = get_architecture(model_name=args.attack_model_name)
+        # attack_model = load_model(model_name=args.attack_model_name, 
+        #     dataset='imagenet', threat_model=args.attack_model_type)
+        attack_model = attack_model.to(dist_util.dev()).eval()
     if args.use_cam:
         layer_name = get_last_conv_name(attack_model)
         grad_cam = GradCamPlusPlus(attack_model, layer_name)
@@ -122,7 +134,7 @@ def main():
         guide_x: pgd_x0
         guide_x_t: pgd_x0_t
         mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
-        '''        
+        '''
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
         out_path = os.path.join(logger.get_dir(), 
             f"pred_xstart{str(time)}.png")
@@ -153,9 +165,9 @@ def main():
     count = 0
     attack_acc = 0
     seed_torch(args.seed)
-    while count * args.batch_size < args.num_samples:
-        x, y = next(data)     
-        x, y = x.to(dist_util.dev()), y.to(dist_util.dev())
+    # while count * args.batch_size < args.num_samples:
+    for (img, label, img_name) in attack_loader:
+        x, y = img.to(dist_util.dev()), label.to(dist_util.dev())
         mask = grad_cam((x+1)/2.).unsqueeze(1) if args.use_cam else None
         x = diffuson_pgd(x, y, attack_model, nb_iter=args.nb_iter,) if args.use_adver else x
         model_kwargs = {"guide_x":x, "y":y, "mask":mask, 
