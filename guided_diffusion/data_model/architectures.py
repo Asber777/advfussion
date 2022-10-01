@@ -190,8 +190,3 @@ def get_architecture(model_name="InceptionV3") -> torch.nn.Module:
         raise Exception("Not Supported Model Name!")
         
     return torch.nn.Sequential(normalize_layer, model)
-
-
-
-
-    

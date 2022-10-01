@@ -12,6 +12,7 @@ from .respace import SpacedDiffusion, space_timesteps
 from .unet import SuperResModel, UNetModel, EncoderUNetModel
 import numpy as np
 import random
+import torch.backends.cudnn as cudnn
 import datetime
 
 INDEX2NAME_MAP_PATH = "/root/hhtpro/123/guided-diffusion/scripts/image_label_map.txt"
@@ -52,15 +53,20 @@ def get_steps_scale_map(num_timesteps, section_counts, scales):
         start_idx += size
     return steps_scale_map
 
-def seed_torch(seed=1029):
-	random.seed(seed)
-	os.environ['PYTHONHASHSEED'] = str(seed) # 为了禁止hash随机化，使得实验可复现
-	np.random.seed(seed)
-	th.manual_seed(seed)
-	th.cuda.manual_seed(seed)
-	th.cuda.manual_seed_all(seed) # if you are using multi-GPU.
-	th.backends.cudnn.benchmark = False
-	th.backends.cudnn.deterministic = True
+def seed_torch(seed=1029,cuda_deterministic=True):
+    os.environ['PYTHONHASHSEED'] = str(seed) # 为了禁止hash随机化，使得实验可复现
+    random.seed(seed)
+    np.random.seed(seed)
+    th.manual_seed(seed)
+    th.cuda.manual_seed_all(seed) # if you are using multi-GPU.
+    # Speed-reproducibility tradeoff https://pytorch.org/docs/stable/notes/randomness.html
+    if cuda_deterministic:  # slower, more reproducible
+        cudnn.deterministic = True
+        cudnn.benchmark = False
+    else:  # faster, less reproducible
+        cudnn.deterministic = False
+        cudnn.benchmark = True
+    
 
 NUM_CLASSES = 1000
 def diffuson_pgd(x, y, attack_model, nb_iter=1, eps=8./255, eps_iter=2./255, 
@@ -110,36 +116,36 @@ def save_args(logger_dir, args):
         f.write(info_json)
 
 from typing import Callable, Optional, Tuple
-from robustbench.data import PREPROCESSINGS
+# from robustbench.data import PREPROCESSINGS
 import torchvision.transforms as transforms
 from robustbench.loaders import CustomImageFolder
 import torch.utils.data as data
-PREPROCESSINGS['Res256Crop256'] = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(256),
-        transforms.ToTensor()
-    ])
-PREPROCESSINGS['Res64Crop64'] = transforms.Compose([
-        transforms.Resize(64),
-        transforms.CenterCrop(64),
-        transforms.ToTensor()
-    ])
+# PREPROCESSINGS['Res256Crop256'] = transforms.Compose([
+#         transforms.Resize(256),
+#         transforms.CenterCrop(256),
+#         transforms.ToTensor()
+#     ])
+# PREPROCESSINGS['Res64Crop64'] = transforms.Compose([
+#         transforms.Resize(64),
+#         transforms.CenterCrop(64),
+#         transforms.ToTensor()
+#     ])
     
-def load_imagenet_batch(
-    batch_size: Optional[int] = 5,
-    data_dir: str = './data',
-    transforms: str = 'Res256Crop256'
-) -> Tuple[th.Tensor, th.Tensor]:
-    assert transforms in PREPROCESSINGS
-    imagenet = CustomImageFolder(data_dir + '/val', 
-        PREPROCESSINGS[transforms])
-    test_loader = data.DataLoader(imagenet,
-                                  batch_size=batch_size,
-                                  shuffle=False,
-                                  num_workers=4,
-                                  drop_last=True)
-    for x, y, p in test_loader:
-        yield x*2 -1.0, y
+# def load_imagenet_batch(
+#     batch_size: Optional[int] = 5,
+#     data_dir: str = './data',
+#     transforms: str = 'Res256Crop256'
+# ) -> Tuple[th.Tensor, th.Tensor]:
+#     assert transforms in PREPROCESSINGS
+#     imagenet = CustomImageFolder(data_dir + '/val', 
+#         PREPROCESSINGS[transforms])
+#     test_loader = data.DataLoader(imagenet,
+#                                   batch_size=batch_size,
+#                                   shuffle=False,
+#                                   num_workers=4,
+#                                   drop_last=True)
+#     for x, y, p in test_loader:
+#         yield x*2 -1.0, y
 
 def diffusion_defaults():
     """

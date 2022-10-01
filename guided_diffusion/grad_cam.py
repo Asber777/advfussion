@@ -2,7 +2,6 @@ import os
 import torch 
 from torch import nn
 from torchvision import utils
-from guided_diffusion.script_util import load_imagenet_batch
 from robustbench.utils import load_model
 from torch.nn.functional import relu
 from torchvision.transforms import Resize
@@ -120,32 +119,32 @@ def get_last_conv_name(net):
             layer_name = name
     return layer_name
 
-def main():
-    bs= 5
-    data = load_imagenet_batch(bs, '/root/hhtpro/123/imagenet')
-    net = load_model(model_name='Standard_R50',\
-        model_dir='root/hhtpro/123',dataset='imagenet',\
-            threat_model='Linf')
-    layer_name = get_last_conv_name(net)
-    grad_cam = GradCamPlusPlus(net, layer_name)
-    for i in range(2):
-        x, y = next(data)
-        x = (x+1)/2.
-        x.requires_grad_()
-        mask = grad_cam(x)  # cam mask
-        # gbp = GuidedBackPropagation(net)
-        # x.grad.zero_()  # 梯度置零
-        # grad = gbp(x)
-        # print(grad.shape, mask.shape) # B 3 H W * B 1 H W
-        # cam_gb = grad * mask.unsqueeze(1)
-        # print(cam_gb.shape)
-        # pic = mask.unsqueeze(1) * 0.5 + x * 0.5
-        pic = torch.where(mask.unsqueeze(1)>0.5, 1, 0) * x
-        for j in range(len(pic)):
-            out_path = os.path.join("/root/hhtpro/123/Grad-CAM.pytorch",
-                                    f"pic{str(i*bs+j).zfill(3)}.png")
-            utils.save_image(pic[j].unsqueeze(0), out_path, nrow=1, normalize=True, range=(0, 1),)
-    grad_cam.remove_handlers()
+# def main():
+#     bs= 5
+#     data = load_imagenet_batch(bs, '/root/hhtpro/123/imagenet')
+#     net = load_model(model_name='Standard_R50',\
+#         model_dir='root/hhtpro/123',dataset='imagenet',\
+#             threat_model='Linf')
+#     layer_name = get_last_conv_name(net)
+#     grad_cam = GradCamPlusPlus(net, layer_name)
+#     for i in range(2):
+#         x, y = next(data)
+#         x = (x+1)/2.
+#         x.requires_grad_()
+#         mask = grad_cam(x)  # cam mask
+#         # gbp = GuidedBackPropagation(net)
+#         # x.grad.zero_()  # 梯度置零
+#         # grad = gbp(x)
+#         # print(grad.shape, mask.shape) # B 3 H W * B 1 H W
+#         # cam_gb = grad * mask.unsqueeze(1)
+#         # print(cam_gb.shape)
+#         # pic = mask.unsqueeze(1) * 0.5 + x * 0.5
+#         pic = torch.where(mask.unsqueeze(1)>0.5, 1, 0) * x
+#         for j in range(len(pic)):
+#             out_path = os.path.join("/root/hhtpro/123/Grad-CAM.pytorch",
+#                                     f"pic{str(i*bs+j).zfill(3)}.png")
+#             utils.save_image(pic[j].unsqueeze(0), out_path, nrow=1, normalize=True, range=(0, 1),)
+#     grad_cam.remove_handlers()
 
 if __name__ == '__main__':
     main()
