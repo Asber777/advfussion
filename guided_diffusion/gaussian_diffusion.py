@@ -438,14 +438,16 @@ class GaussianDiffusion:
         """
         # Repaint在这里加的: START
         weighed_gt = self.q_sample(model_kwargs["guide_x"], t)
+        time = int(t[0].detach().cpu())
         if model_kwargs.get('resizer', None) != None:
-            time = int(t[0].detach().cpu())
             if model_kwargs.get('range_t1') and time > model_kwargs['range_t1']:
                 down, up = model_kwargs['resizer']
                 x = x - up(down(x)) + up(down(weighed_gt))
-        if model_kwargs.get('mask', None) != None:
-            original_maks = th.where(model_kwargs['mask'] > model_kwargs['threshold'], 1.,0.)
-            x = (original_maks * weighed_gt + (1 - original_maks) * x)
+        # if model_kwargs.get('mask', None) != None and 80> time >30:
+        #     mask = model_kwargs['mask'] 
+        #     nomask = 1 - mask
+        #     x = (mask * weighed_gt + nomask* x)
+
         # Repaint在这里加的: END, 不然会有很小的噪声... 
         out = self.p_mean_variance(
             model,

@@ -77,7 +77,7 @@ def main():
         #     out_path, nrow=1, normalize=True, range=(-1, 1),)
         
         if args.use_adver and time < args.range_t2:
-            maks = th.where(model_kwargs['mask'] > model_kwargs['threshold'], 1.,0.)
+            maks = model_kwargs['mask']
             delta = th.zeros_like(x)
             with th.enable_grad():
                 delta.requires_grad_()

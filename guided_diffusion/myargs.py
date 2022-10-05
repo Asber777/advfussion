@@ -10,16 +10,16 @@ def create_argparser():
         # ilvr setting
         use_ilvr=True,
         down_N=8,
-        range_t1=80, # 这个是在0~timestep_respacing之间 决定什么时候ilvr
+        range_t1=35, # 这个是在0~timestep_respacing之间 决定什么时候ilvr
         # adver setting
-        use_adver=True,
+        use_adver=False,
         range_t2=1000, # 这个是在0~diffusion_steps之间 决定什么时候攻击
         attack_model_name= "Salman2020Do_50_2", #"Standard_R50", #"Salman2020Do_50_2"
-        adver_scale=1.8,
+        adver_scale=8,
         seed=666,
         # half setting
         use_half=True,
-        start_t=80,#100,  # must <= max(timestep_respacing) ? currently
+        start_t=50,#100,  # must <= max(timestep_respacing) ? currently
         # PGD at begin
         nb_iter=20,
         # CAM setting

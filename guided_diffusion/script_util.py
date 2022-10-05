@@ -116,7 +116,7 @@ def save_args(logger_dir, args):
         f.write(info_json)
 
 from typing import Callable, Optional, Tuple
-# from robustbench.data import PREPROCESSINGS
+from robustbench.data import PREPROCESSINGS
 import torchvision.transforms as transforms
 from robustbench.loaders import CustomImageFolder
 import torch.utils.data as data
