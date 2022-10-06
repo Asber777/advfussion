@@ -62,7 +62,7 @@ def main():
         resizers = (down, up) # 现在把ilvr放在gaussian diffusion文件里执行
 
     def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, 
-            mean=None, variance=None,  pred_xstart=None, mask=None, threshold=None, **kwargs):
+            mean=None, log_variance=None,  pred_xstart=None, mask=None, threshold=None, **kwargs):
         '''
         x: x_{t+1}
         mean: x_{t}
@@ -71,25 +71,25 @@ def main():
         mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
         '''
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
-        # out_path = os.path.join(logger.get_dir(), 
-        #     f"pred_xstart{str(time)}.png")
-        # utils.save_image(pred_xstart[0].unsqueeze(0), 
-        #     out_path, nrow=1, normalize=True, range=(-1, 1),)
-        
         if args.use_adver and time < args.range_t2:
-            maks = model_kwargs['mask']
+            maks = model_kwargs['mask'].detach().clone()
             delta = th.zeros_like(x)
             with th.enable_grad():
                 delta.requires_grad_()
                 tmpx = pred_xstart.detach().clone() + delta *(1-maks) # range from -1~1
+
                 attack_logits = attack_model(th.clamp((tmpx+1)/2.,0.,1.)) 
-                # attack_log_probs = F.log_softmax(attack_logits, dim=-1)
-                selected = attack_logits[range(len(attack_logits)), y.view(-1)] 
+                target = th.where(attack_logits.argmax(dim=1)==y, y, attack_logits.argmin(dim=1))
+                sign = th.where(attack_logits.argmax(dim=1)==y, 1, -1)
+                selected = sign * attack_logits[range(len(attack_logits)), target.view(-1)] 
                 loss = -selected.sum() * args.adver_scale 
                 loss.backward()
-                grad_sign = delta.grad.data.detach().clone()
+                grad_sign = delta.grad.data.detach().clone() *(1-maks)
                 # delta.grad.data.zero_()
             mean = mean.float() + grad_sign.float()
+            out_path = os.path.join(logger.get_dir(), f"grad_sign{str(time).zfill(5)}.png")
+            utils.save_image(grad_sign, out_path, nrow=args.batch_size, 
+            normalize=True, range=(-1, 1),)
         return mean
 
     def model_fn(x, t, y=None, **kwargs):
@@ -171,6 +171,8 @@ def main():
         out_path = os.path.join(logger.get_dir(), f"{str(count).zfill(5)}.png")
         utils.save_image(th.cat([sample, x], dim=0), out_path, nrow=args.batch_size, 
             normalize=True, range=(-1, 1),)
+        if count>= args.stop_count:
+            break
 
     dist.barrier()
     logger.log("sampling complete")
