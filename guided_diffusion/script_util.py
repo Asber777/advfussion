@@ -18,7 +18,33 @@ import datetime
 INDEX2NAME_MAP_PATH = "/root/hhtpro/123/guided-diffusion/scripts/image_label_map.txt"
 DT = lambda :datetime.datetime.now().strftime("adv-%Y-%m-%d-%H-%M-%S-%f")
 get_grid = lambda pic: make_grid(pic.detach().clone(), len(pic), normalize=True)
-
+def add_border(img, flag, width=1, R=1, G=0, B=0):
+    img = img.detach().clone()
+    img[flag, 0, :width, :] = R
+    img[flag, 1, :width, :] = G
+    img[flag, 2, :width, :] = B
+    img[flag, 0, -width:, :] = R
+    img[flag, 1, -width:, :] = G
+    img[flag, 2, -width:, :] = B
+    img[flag, 0, :, :width] = R
+    img[flag, 1, :, :width] = G
+    img[flag, 2, :, :width] = B
+    img[flag, 0, :, -width:] = R
+    img[flag, 1, :, -width:] = G
+    img[flag, 2, :, -width:] = B
+    img[~flag, 0, :width, :] = 0
+    img[~flag, 1, :width, :] = 0
+    img[~flag, 2, :width, :] = 1
+    img[~flag, 0, -width:, :] = 0
+    img[~flag, 1, -width:, :] = 0
+    img[~flag, 2, -width:, :] = 1
+    img[~flag, 0, :, :width] = 0
+    img[~flag, 1, :, :width] = 0
+    img[~flag, 2, :, :width] = 1
+    img[~flag, 0, :, -width:] = 0
+    img[~flag, 1, :, -width:] = 0
+    img[~flag, 2, :, -width:] = 1
+    return img
 def get_steps_scale_map(num_timesteps, section_counts, scales):
     steps_scale_map = {}
     if isinstance(section_counts, str):
@@ -114,6 +140,13 @@ def save_args(logger_dir, args):
     info_json = json.dumps(vars(args), sort_keys=False, indent=4, separators=(' ', ':'))
     with open(args_path, 'w') as f:
         f.write(info_json)
+
+import json, os
+def load_args(path):
+    args_path = os.path.join(path, f"exp.json")
+    with open(args_path) as f:
+        m = json.load(f)
+    return m
 
 from typing import Callable, Optional, Tuple
 from robustbench.data import PREPROCESSINGS

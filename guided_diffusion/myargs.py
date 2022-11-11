@@ -4,28 +4,29 @@ from guided_diffusion.script_util import model_and_diffusion_defaults, \
     
 def create_argparser():
     defaults = dict(
-        describe="checkx0", # mask_ilvr_half_attack
-        num_samples=5,
+        describe="makeitsiilar-early_stop", # mask_ilvr_half_attack
+        # num_samples=5,
         batch_size=5,
         stop_count=1000,
-        # ilvr setting
-        use_ilvr=True,
-        down_N=8,
-        range_t1=80, # 这个是在0~timestep_respacing之间 决定什么时候ilvr
         # adver setting
         use_adver=True,
-        range_t2=1000, # 这个是在0~diffusion_steps之间 决定什么时候攻击
-        attack_model_name= "Salman2020Do_50_2", #"Standard_R50", #"Salman2020Do_50_2"
-        adver_scale=5,
+        range_t2_e=200, # 这个是在0~diffusion_steps之间 决定什么时候攻击
+        range_t2_s=0,
+        attack_model_name= "Engstrom2019Robustness", #"Standard_R50", #"Salman2020Do_50_2"
+        adver_scale=0.4, #3
+        # PGD at begin
+        nb_iter=30,
+        nb_iter_conf=25, #1
         seed=666,
         # half setting
         use_half=True,
-        start_t=100,#100,  # must <= max(timestep_respacing) ? currently
-        # PGD at begin
-        nb_iter=20,
+        start_t=100, #100,  # must <= max(timestep_respacing) ? currently
         # CAM setting
         use_cam=True,
         threshold=0.5,
+        mask_p=1,
+        device='cuda',
+        # change_pre_time=20,
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())

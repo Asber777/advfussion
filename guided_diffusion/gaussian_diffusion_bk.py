@@ -320,6 +320,12 @@ class GaussianDiffusion:
                 pred_xstart = process_xstart(
                     self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
                 )
+            time = int(t[0].detach().cpu())
+            if model_kwargs['change_pre_time']<time:
+                mask = model_kwargs['mask'].detach().clone()
+                if 'guide_x' in model_kwargs and model_kwargs['guide_x'] is not None:
+                    pred_xstart = pred_xstart * (1-mask**2)  + model_kwargs['guide_x'] * mask**2
+                    # pred_xstart = pred_xstart * (1-mask**2)  + model_kwargs['guide_x'] * mask **
             model_mean, _, _ = self.q_posterior_mean_variance(#居然是拿q(xt-1|xt, x0)来得到的mean 不过这个x0是预测来的
                 x_start=pred_xstart, x_t=x, t=t
             )
@@ -437,12 +443,12 @@ class GaussianDiffusion:
                  - 'pred_xstart': a prediction of x_0.
         """
         # Repaint在这里加的: START
-        # time = int(t[0].detach().cpu())
-        # if model_kwargs.get('resizer', None) != None:
-        #     if model_kwargs.get('range_t1') and time > model_kwargs['range_t1']:
-        #         weighed_gt = self.q_sample(model_kwargs["guide_x"], t)
-        #         down, up = model_kwargs['resizer']
-        #         x = x - up(down(x)) + up(down(weighed_gt))
+        time = int(t[0].detach().cpu())
+        if model_kwargs.get('resizer', None) != None:
+            if model_kwargs.get('range_t1') and time > model_kwargs['range_t1']:
+                weighed_gt = self.q_sample(model_kwargs["guide_x"], t)
+                down, up = model_kwargs['resizer']
+                x = x - up(down(x)) + up(down(weighed_gt))
         # Repaint在这里加的: END, 不然会有很小的噪声... 
         out = self.p_mean_variance(
             model,

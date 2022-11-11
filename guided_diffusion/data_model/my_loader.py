@@ -37,3 +37,24 @@ class MyCustomDataset(Dataset):
 
     def __len__(self):
         return self.data_len
+
+class OnePicDataset(Dataset):
+    def __init__(self, img_path = "images", image_name = '44.png', transform = 'Res256Crop256'):
+        # Preprocess
+        if transform in PREPROCESSINGS:
+            self.transform = PREPROCESSINGS[transform]
+        else:
+            raise ValueError("transform must be 'Res256Crop256' or 'Res64Crop64'")
+        self.data_len = 1
+        self.image_name = image_name
+        self.img_path = img_path
+
+    def __getitem__(self, index):
+        img_as_img = Image.open(os.path.join(self.img_path, self.image_name)) 
+        if self.transform is not None:
+            img_as_tensor = self.transform(img_as_img)
+        single_image_label = int(self.image_name.split('.')[0])
+        return (img_as_tensor, single_image_label, self.image_name)
+
+    def __len__(self):
+        return self.data_len
