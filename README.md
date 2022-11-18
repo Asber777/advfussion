@@ -2,7 +2,7 @@
 
 This repository is based on [openai/guided-diffusion](https://github.com/openai/guided-diffusion), with modifications for generate adversarial exampels.
 
-# Download pre-trained models
+# Download pre-trained models and Image
 
 Here are the download links for each model checkpoint:
 
@@ -12,34 +12,15 @@ Here are the download links for each model checkpoint:
 
 you can download them and put them in folder "/models".
 
-# Sampling UAEs from pre-trained models
+You could download the data/images dataset from [google drive](https://drive.google.com/file/d/1M7Xc7guRKk_YuLoDf-xVv45HX3nh4r_-/view?usp=sharing) (140M) 
+and put them at "/data/images"
 
-To sample from these models, you can use the `classifier_sample.py`, `image_sample.py`, and `super_res_sample.py` scripts.
-Here, we provide flags for sampling from all of these models.
+
 We assume that you have downloaded the relevant model checkpoints into a folder called `models/`.
 
-For these examples, we will generate 100 samples with batch size 4. Feel free to change these values.
-
+To sample from conditional DDPM in 256*256 image, you can use the `half_cam_attack.py` scripts.
+Then we will generate 1000 samples with batch size 5. Feel free to change the hyper parameter values.
 ```
-SAMPLE_FLAGS="--batch_size 4 --num_samples 100 --timestep_respacing 250"
+python scripts/half_cam_attack.py --adver_scale 0.4 --range_t2_e 200 --start_t 100
 ```
-
-## Classifier guidance
-
-Note for these sampling runs that you can set `--classifier_scale 0` to sample from the base diffusion model.
-You may also use the `image_sample.py` script instead of `classifier_sample.py` in that case.
-
-
- * 256x256 model:
-
-```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-python classifier_sample.py $MODEL_FLAGS --classifier_scale 1.0 --classifier_path models/256x256_classifier.pt --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS
-```
-
- * 256x256 model (unconditional):
-
-```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond False --diffusion_steps 1000 --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-python classifier_sample.py $MODEL_FLAGS --classifier_scale 10.0 --classifier_path models/256x256_classifier.pt --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS
-```
+plz make sure that "start_t" is smaller than "timestep_respacing"(250)

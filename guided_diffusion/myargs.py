@@ -4,28 +4,25 @@ from guided_diffusion.script_util import model_and_diffusion_defaults, \
     
 def create_argparser():
     defaults = dict(
-        describe="appendix", # mask_ilvr_half_attack
+        describe="TEST", # mask_ilvr_half_attack
         batch_size=5,
-        stop_count=100,
+        stop_count=1000,
         # adver setting
         use_adver=True,
-        range_t2_e=200, # 这个是在0~diffusion_steps之间 决定什么时候攻击
+        range_t2_e=200, 
         range_t2_s=0,
         attack_model_name= "Engstrom2019Robustness", #"Standard_R50", #"Salman2020Do_50_2"
         adver_scale=0.4, #3
         # PGD at begin
-        nb_iter=30,
+        # nb_iter=30,
         nb_iter_conf=25, #1
-        seed=666,
         # half setting
         use_half=True,
         start_t=100, #100,  # must <= max(timestep_respacing) ? currently
         # CAM setting
         use_cam=True,
-        threshold=0.5,
         mask_p=1,
-        device='cuda:1',
-        # change_pre_time=20,
+        device='cuda',
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())
@@ -36,7 +33,9 @@ def create_argparser():
         diffusion_steps=1000,
         )
     unchange_flags = dict(
-        result_dir='/root/hhtpro/123/result',
+        ImageNetpath = "./data/images",
+        seed=666,
+        result_dir='../result',
         clip_denoised=True,
         image_size=256,
         model_path="guided-diffusion/models/256x256_diffusion.pt",

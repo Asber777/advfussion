@@ -38,8 +38,6 @@ def main():
     result_dir = osp.join(logger.get_dir(), 'result')
     os.makedirs(result_dir, exist_ok=True)
     save_args(logger.get_dir(), args)
-    shutil.copy(os.path.realpath(__file__), logger.get_dir())
-    shutil.copy('/root/hhtpro/123/guided-diffusion/guided_diffusion/gaussian_diffusion.py', logger.get_dir())
 
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys()))
@@ -49,7 +47,7 @@ def main():
     if args.use_fp16: model.convert_to_fp16()
     model.eval()
     
-    data = MyCustomDataset(img_path="/root/hhtpro/123/GA-Attack-main/data/images")
+    data = MyCustomDataset(img_path=args.ImageNetpath)
     sampler = th.utils.data.distributed.DistributedSampler(data)
     attack_loader = th.utils.data.DataLoader(dataset=data,
                                                 batch_size=args.batch_size,
@@ -141,8 +139,8 @@ def main():
             err = (attack_model(img).data.max(1)[1] != label.data).float().sum()
             natural_err_total += err
         x = img.clone().detach()*2-1
-        if args.use_adver:
-            x = diffuson_pgd(x, label, attack_model, nb_iter=args.nb_iter,)
+        # if args.use_adver:
+        #     x = diffuson_pgd(x, label, attack_model, nb_iter=args.nb_iter,)
         # begin sample
         model_kwargs = {
             "guide_x":x, "y":label, "mask":mask,# "resizer":resizers,
