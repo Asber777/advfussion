@@ -15,9 +15,8 @@ you can download them and put them in folder "/models".
 You could download the data/images dataset from [google drive](https://drive.google.com/file/d/1M7Xc7guRKk_YuLoDf-xVv45HX3nh4r_-/view?usp=sharing) (140M) 
 and put them at "/data/images"
 
-
-We assume that you have downloaded the relevant model checkpoints into a folder called `models/`.
-
+We assume that you have downloaded the relevant model checkpoints and Dataset.
+# RUN ADVDDPM
 To sample from conditional DDPM in 256*256 image, you can use the `half_cam_attack.py` scripts.
 Then we will generate 1000 samples with batch size 5. Feel free to change the hyper parameter values.
 ```
