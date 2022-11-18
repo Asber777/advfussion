@@ -3,18 +3,18 @@ import os
 import math
 import lpips
 import shutil
-import time
+# import time
 import torch as th
 import os.path as osp
 import torch.distributed as dist
 from torchvision import utils
 from torch import clamp
-from torchvision import transforms
-from pytorch_msssim import ssim, ms_ssim
+# from torchvision import transforms
+# from pytorch_msssim import ssim, ms_ssim
 from robustbench.utils import load_model
-from torchvision.utils import make_grid
-from guided_diffusion.data_model.my_loader import OnePicDataset
-from guided_diffusion.resizer import Resizer
+# from torchvision.utils import make_grid
+from guided_diffusion.data_model.my_loader import MyCustomDataset
+# from guided_diffusion.resizer import Resizer
 from guided_diffusion import dist_util, logger
 from guided_diffusion.script_util import save_args, create_model_and_diffusion, \
     args_to_dict, model_and_diffusion_defaults, diffuson_pgd, seed_torch, DT, add_border
@@ -28,6 +28,7 @@ from guided_diffusion.myargs import create_argparser
 
 def main():
     args = create_argparser().parse_args()
+    args.describe = 'Half-Start'
     dist_util.setup_dist()
     dir = osp.join(args.result_dir, args.describe, DT(),)
     logger.configure(dir)
@@ -45,8 +46,9 @@ def main():
     if args.use_fp16: model.convert_to_fp16()
     model.eval()
     
-    data = OnePicDataset("/root/hhtpro/123/GA-Attack-main/data/images", '44.png')
-    args.batch_size = 1
+    # data = OnePicDataset("/root/hhtpro/123/GA-Attack-main/data/images", '44.png')
+    # args.batch_size = 1
+    data = MyCustomDataset(img_path="/root/hhtpro/123/GA-Attack-main/data/images")
     attack_loader = th.utils.data.DataLoader(dataset=data,
                                                 batch_size=args.batch_size,
                                                 shuffle=False,num_workers=2, pin_memory=True)
@@ -67,12 +69,6 @@ def main():
         mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
         '''
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
-        out_path = os.path.join(logger.get_dir(), f"pred_xstart{str(time).zfill(5)}.png")
-        utils.save_image(pred_xstart, out_path, nrow=args.batch_size, 
-                normalize=True, range=(-1, 1),)
-        out_path = os.path.join(logger.get_dir(), f"x{str(time).zfill(5)}.png")
-        utils.save_image(x, out_path, nrow=args.batch_size, 
-                normalize=True, range=(-1, 1),)
         if args.use_adver and args.range_t2_s <=time <= args.range_t2_e:
             maks = mask.detach().clone()
             eps = th.exp(0.5 * log_variance)
@@ -92,15 +88,15 @@ def main():
                     loss = -selected.sum()
                     loss.backward()
                     grad_ = delta.grad.data.detach().clone()
-                    delta.data += grad_  * args.adver_scale  *(1-maks)**2
+                    delta.data += grad_  * args.adver_scale  *(1-maks)**args.mask_p
                     delta.data = clamp(delta.data, -eps, eps)
                     # delta.data = clamp(pred_xstart.data + delta.data, -1, +1) - pred_xstart.data
                     delta.grad.data.zero_()
                 # delta.grad.data.zero_()
             mean = mean.float() + delta.data.float() 
-            out_path = os.path.join(logger.get_dir(), f"delta{str(time).zfill(5)}.png")
-            utils.save_image(delta*10, out_path, nrow=args.batch_size, 
-                normalize=True, range=(-0.5, 0.5),)
+            # out_path = os.path.join(logger.get_dir(), f"delta{str(time).zfill(5)}.png")
+            # utils.save_image(delta*10, out_path, nrow=args.batch_size, 
+            #     normalize=True, range=(-0.5, 0.5),)
         return mean
 
     def model_fn(x, t, y=None, **kwargs):
@@ -114,39 +110,39 @@ def main():
     for i, (img, label, img_name) in enumerate(attack_loader):
         img, label = img.to(dist_util.dev()), label.to(dist_util.dev())
         mask = grad_cam(img).unsqueeze(1) if args.use_cam else None
-        import cv2
-        import numpy as np
-        from skimage import io
-        heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
-        heatmap = np.float32(heatmap) / 255
-        heatmap = heatmap[..., ::-1]  # gbr to rgb
-        io.imsave(os.path.join(result_dir, 'heatmap.jpg'), (heatmap * 255).astype(np.uint8))
+        # import cv2
+        # import numpy as np
+        # from skimage import io
+        # heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
+        # heatmap = np.float32(heatmap) / 255
+        # heatmap = heatmap[..., ::-1]  # gbr to rgb
+        # io.imsave(os.path.join(result_dir, 'heatmap.jpg'), (heatmap * 255).astype(np.uint8))
         x = img.clone().detach()*2-1
         if args.use_adver:
             x = diffuson_pgd(x, label, attack_model, nb_iter=args.nb_iter,)
         model_kwargs = {
             "guide_x":x, "y":label, "mask":mask,# "resizer":resizers,
         }
-        t = th.tensor([args.start_t-1] * 1, device=dist_util.dev())
-        sample = diffusion.p_sample_loop(
-            model_fn,
-            (args.batch_size, 3, args.image_size, args.image_size),
-            clip_denoised=args.clip_denoised,
-            model_kwargs=model_kwargs,
-            cond_fn=cond_fn if args.use_adver else None,
-            start_t=args.start_t if args.use_half else None,
-            device=dist_util.dev(),
-            progress=True,
-        )
-        sample = th.clamp(sample,-1.,1.)
-        at_predict = attack_model((sample+1)/2).argmax(dim=-1)
-        logger.log(f'original label of sample: {label.cpu().numpy()},')
-        logger.log(f'predict of attack_model: {at_predict.cpu().numpy()}, ')
-        out_path = os.path.join(logger.get_dir(), f"result.png")
-        pt_path = os.path.join(result_dir, f"result.pt")
-        utils.save_image(th.cat([sample, x], dim=0), out_path, 
-            nrow=len(sample), normalize=True, range=(-1, 1),)
-        th.save({'sample':sample, "x":x, 'y':label, "predict":at_predict}, pt_path)
+        for j in range(25, args.timestep_respacing[0]+1,25):
+            sample = diffusion.p_sample_loop(
+                model_fn,
+                (args.batch_size, 3, args.image_size, args.image_size),
+                clip_denoised=args.clip_denoised,
+                model_kwargs=model_kwargs,
+                cond_fn=cond_fn if args.use_adver else None,
+                start_t=j if args.use_half else None,
+                device=dist_util.dev(),
+                progress=True,
+            )
+            sample = th.clamp(sample,-1.,1.)
+            at_predict = attack_model((sample+1)/2).argmax(dim=-1)
+            logger.log(f'original label of sample: {label.cpu().numpy()},')
+            logger.log(f'predict of attack_model: {at_predict.cpu().numpy()}, ')
+            out_path = os.path.join(logger.get_dir(), f"result{j}.png")
+            pt_path = os.path.join(result_dir, f"result{j}.pt")
+            utils.save_image(th.cat([sample, x], dim=0), out_path, 
+                nrow=len(sample), normalize=True, range=(-1, 1),)
+            th.save({'sample':sample, "x":x, 'y':label, "predict":at_predict}, pt_path)
         break
     dist.barrier()
     logger.log("sampling complete")

@@ -4,10 +4,9 @@ from guided_diffusion.script_util import model_and_diffusion_defaults, \
     
 def create_argparser():
     defaults = dict(
-        describe="makeitsiilar-early_stop", # mask_ilvr_half_attack
-        # num_samples=5,
+        describe="appendix", # mask_ilvr_half_attack
         batch_size=5,
-        stop_count=1000,
+        stop_count=100,
         # adver setting
         use_adver=True,
         range_t2_e=200, # 这个是在0~diffusion_steps之间 决定什么时候攻击
@@ -25,7 +24,7 @@ def create_argparser():
         use_cam=True,
         threshold=0.5,
         mask_p=1,
-        device='cuda',
+        device='cuda:1',
         # change_pre_time=20,
     )
     defaults.update(model_and_diffusion_defaults())

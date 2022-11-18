@@ -6,3 +6,4 @@ data/
 output*
 models
 ref_imgs
+lafeat*.py
