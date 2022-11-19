@@ -61,24 +61,10 @@ def main():
     grad_cam = GradCamPlusPlus(attack_model, layer_name)
 
     resizers = None
-    # if args.use_ilvr:
-    #     assert math.log(args.down_N, 2).is_integer()
-    #     shape = (args.batch_size, 3, args.image_size, args.image_size)
-    #     shape_d = (args.batch_size, 3, int(args.image_size / args.down_N), int(args.image_size / args.down_N))
-    #     down = Resizer(shape, 1 / args.down_N).to(next(model.parameters()).device)
-    #     up = Resizer(shape_d, args.down_N).to(next(model.parameters()).device)
-    #     resizers = (down, up) # 现在把ilvr放在gaussian diffusion文件里执行
 
     def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, 
             mean=None, log_variance=None,  pred_xstart=None, 
             mask=None, threshold=None, early_stop=True, **kwargs):
-        '''
-        x: x_{t+1}
-        mean: x_{t}
-        guide_x: pgd_x0
-        guide_x_t: pgd_x0_t
-        mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
-        '''
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
         if args.use_adver and args.range_t2_s <=time <= args.range_t2_e:
             maks = mask.detach().clone()

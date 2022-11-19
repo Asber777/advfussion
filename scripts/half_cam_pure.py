@@ -13,7 +13,7 @@ from guided_diffusion.script_util import model_and_diffusion_defaults, \
     classifier_defaults, add_dict_to_argparser
 
 ''' 
-给advDDPM进行PURE ACC测试的 
+check PURE ACC for advDDPM
 '''
     
 def create_argparser():
@@ -22,13 +22,8 @@ def create_argparser():
         # num_samples=5,
         batch_size=5,
         stop_count=1000,
-        # ilvr setting
-        # use_ilvr=False,
-        # down_N=4,
-        # range_t1=80, # 这个是在0~timestep_respacing之间 决定什么时候ilvr
-        # adver setting
         use_adver=False,
-        range_t2_e=200, # 这个是在0~diffusion_steps之间 决定什么时候攻击
+        range_t2_e=200,
         range_t2_s=0,
         attack_model_name= "Standard_R50", #"Standard_R50", #"Salman2020Do_50_2"
         attack_model_type='Linf',
@@ -54,7 +49,7 @@ def create_argparser():
         diffusion_steps=1000,
         )
     unchange_flags = dict(
-        result_dir='/root/hhtpro/123/result',
+        result_dir='../../result',
         clip_denoised=True,
         image_size=256,
         model_path="guided-diffusion/models/256x256_diffusion_uncond.pt",

@@ -24,10 +24,6 @@ from guided_diffusion.script_util import save_args, create_model_and_diffusion, 
 from guided_diffusion.grad_cam import GradCamPlusPlus, get_last_conv_name
 from guided_diffusion.myargs import create_argparser
 
-'''
-冗余代码 只是为了获取某张图片攻击时候的详情
-'''
-
 
 def main():
     args = create_argparser().parse_args()
@@ -41,8 +37,6 @@ def main():
     result_dir = osp.join(logger.get_dir(), 'result')
     os.makedirs(result_dir, exist_ok=True)
     save_args(logger.get_dir(), args)
-    shutil.copy(os.path.realpath(__file__), logger.get_dir())
-    shutil.copy('/root/hhtpro/123/guided-diffusion/guided_diffusion/gaussian_diffusion.py', logger.get_dir())
 
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys()))
@@ -52,7 +46,7 @@ def main():
     if args.use_fp16: model.convert_to_fp16()
     model.eval()
     
-    data = MyCustomDataset(img_path="/root/hhtpro/123/GA-Attack-main/data/images")
+    data = MyCustomDataset(img_path=args.ImageNetpath)
     attack_loader = th.utils.data.DataLoader(dataset=data,
                                                 batch_size=args.batch_size,
                                                 shuffle=False,num_workers=2, pin_memory=True)

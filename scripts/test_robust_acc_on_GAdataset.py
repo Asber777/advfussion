@@ -10,7 +10,7 @@ threat_model = "Linf"
 
 # main
 
-data = MyCustomDataset(img_path="/root/hhtpro/123/GA-Attack-main/data/images")
+data = MyCustomDataset(img_path="../data/images")
 sampler = th.utils.data.SequentialSampler(data)
 attack_loader = th.utils.data.DataLoader(dataset=data,
                                             batch_size=batch_size,

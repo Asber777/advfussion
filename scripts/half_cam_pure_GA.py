@@ -76,5 +76,6 @@ if __name__ == "__main__":
     # attack_model_name = 'Standard_R50' # Engstrom2019Robustness
     # attack_model_name = 'Salman2020Do_R50'
     attack_model_type = 'Linf'
-    OUTPUT_DIR=f"/root/hhtpro/123/GA-Attack-main/Output_Feature_APR_FGSM/Ensemble_TID_{attack_model_name}_SIDLIST_2_3_5_Auxiliary_id_list_1_4_6_GA_TDMI_fgsm_ce_thres_0.2_intervals_5_steps_10_max_eps_20_eps_20_mu_1.0_mode_nearest_kernel_size_5"
+    OUTPUT_DIR=None
+    assert OUTPUT_DIR is not None, "plz assign the dir"
     main(OUTPUT_DIR, attack_model_name, attack_model_type)

@@ -39,31 +39,6 @@ class ResNet_Adv_Model(nn.Module):
             raise NotImplementedError(f'unknown mode: {mode}')
         return out
 
-# class SDE_Adv_Model(nn.Module):
-#     def __init__(self, model, device, purefun):
-#         super().__init__()
-#         # image classifier
-#         self.resnet = model.to(device)
-#         self.purefun = purefun
-
-#     def purify(self, x):
-#         model_kwargs = {"guide_x":torch.clip(x*2-1, -1, 1)}
-#         S = x.shape
-#         x_re = self.purefun(model_kwargs=model_kwargs,
-#         shape=(S[0], S[1], S[2], S[3]))
-#         return (x_re + 1) * 0.5
-
-#     def forward(self, x, mode='purify_and_classify'):
-#         if mode == 'purify':
-#             out = self.purify(x)
-#         elif mode == 'classify':
-#             out = self.resnet(x)  # x in [0, 1]
-#         elif mode == 'purify_and_classify':
-#             x = self.purify(x)
-#             out = self.resnet(x)  # x in [0, 1]
-#         else:
-#             raise NotImplementedError(f'unknown mode: {mode}')
-#         return out
 
 def create_argparser():
     defaults = dict(
@@ -94,11 +69,11 @@ def create_argparser():
         diffusion_steps=1000,
         )
     unchange_flags = dict(
-        result_dir='/root/hhtpro/123/result',
+        result_dir='../../result',
         clip_denoised=True,
         image_size=256,
-        model_path="/root/hhtpro/123/guided-diffusion/models/256x256_diffusion_uncond.pt",
-        classifier_path="/root/hhtpro/123/guided-diffusion/models/256x256_classifier.pt",
+        model_path="guided-diffusion/models/256x256_diffusion_uncond.pt",
+        classifier_path="guided-diffusion/models/256x256_classifier.pt",
         attention_resolutions="32,16,8",
         learn_sigma=True, 
         dropout=0.0,
@@ -145,7 +120,7 @@ def main():
     # def model_fn(x, t, **kwargs):
     #     return model(x, t, )
 
-    data = MyCustomDataset(img_path="/root/hhtpro/123/GA-Attack-main/data/images")
+    data = MyCustomDataset(img_path="../data/images")
     sampler = th.utils.data.distributed.DistributedSampler(data)
     attack_loader = th.utils.data.DataLoader(dataset=data,
                                                 batch_size=args.batch_size,

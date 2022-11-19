@@ -34,8 +34,6 @@ def main():
     result_dir = osp.join(logger.get_dir(), 'result')
     os.makedirs(result_dir, exist_ok=True)
     save_args(logger.get_dir(), args)
-    shutil.copy(os.path.realpath(__file__), logger.get_dir())
-    shutil.copy('/root/hhtpro/123/guided-diffusion/guided_diffusion/gaussian_diffusion.py', logger.get_dir())
 
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys()))
@@ -44,8 +42,7 @@ def main():
     model.to(dist_util.dev())
     if args.use_fp16: model.convert_to_fp16()
     model.eval()
-    
-    data = OnePicDataset("/root/hhtpro/123/GA-Attack-main/data/images", '44.png')
+    data = OnePicDataset(args.ImageNetpath, '44.png')
     args.batch_size = 1
     attack_loader = th.utils.data.DataLoader(dataset=data,
                                                 batch_size=args.batch_size,
@@ -59,13 +56,6 @@ def main():
     def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, 
             mean=None, log_variance=None,  pred_xstart=None, 
             mask=None, threshold=None, early_stop=True, **kwargs):
-        '''
-        x: x_{t+1}
-        mean: x_{t}
-        guide_x: pgd_x0
-        guide_x_t: pgd_x0_t
-        mean = mean.float() +  kwargs['variance'] *  gradient.float() # kwargs['variance'] 感觉可以变成常量?
-        '''
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
         out_path = os.path.join(logger.get_dir(), f"pred_xstart{str(time).zfill(5)}.png")
         utils.save_image(pred_xstart, out_path, nrow=args.batch_size, 
