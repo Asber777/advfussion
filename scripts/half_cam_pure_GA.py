@@ -77,5 +77,5 @@ if __name__ == "__main__":
     # attack_model_name = 'Salman2020Do_R50'
     attack_model_type = 'Linf'
     OUTPUT_DIR=None
-    assert OUTPUT_DIR is not None, "plz assign the dir"
+    assert OUTPUT_DIR is not None, "plz assign the dir of GA-attack"
     main(OUTPUT_DIR, attack_model_name, attack_model_type)

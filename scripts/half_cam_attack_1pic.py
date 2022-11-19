@@ -21,10 +21,6 @@ from guided_diffusion.script_util import save_args, create_model_and_diffusion, 
 from guided_diffusion.grad_cam import GradCamPlusPlus, get_last_conv_name
 from guided_diffusion.myargs import create_argparser
 
-'''
-冗余代码 只是为了获取某张图片攻击时候的详情
-'''
-
 
 def main():
     args = create_argparser().parse_args()

@@ -80,9 +80,6 @@ def main():
                     delta.grad.data.zero_()
                 # delta.grad.data.zero_()
             mean = mean.float() + delta.data.float() 
-            # out_path = os.path.join(logger.get_dir(), f"delta{str(time).zfill(5)}.png")
-            # utils.save_image(delta*10, out_path, nrow=args.batch_size, 
-            #     normalize=True, range=(-0.5, 0.5),)
         return mean
 
     def model_fn(x, t, y=None, **kwargs):
@@ -96,13 +93,6 @@ def main():
     for i, (img, label, img_name) in enumerate(attack_loader):
         img, label = img.to(dist_util.dev()), label.to(dist_util.dev())
         mask = grad_cam(img).unsqueeze(1) if args.use_cam else None
-        # import cv2
-        # import numpy as np
-        # from skimage import io
-        # heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
-        # heatmap = np.float32(heatmap) / 255
-        # heatmap = heatmap[..., ::-1]  # gbr to rgb
-        # io.imsave(os.path.join(result_dir, 'heatmap.jpg'), (heatmap * 255).astype(np.uint8))
         x = img.clone().detach()*2-1
         if args.use_adver:
             x = diffuson_pgd(x, label, attack_model, nb_iter=args.nb_iter,)

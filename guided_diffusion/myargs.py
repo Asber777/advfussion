@@ -23,6 +23,7 @@ def create_argparser():
         use_cam=True,
         mask_p=1,
         device='cuda',
+        pure_name = "",
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())
