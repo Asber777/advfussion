@@ -15,7 +15,7 @@ import random
 import torch.backends.cudnn as cudnn
 import datetime
 
-INDEX2NAME_MAP_PATH = "/root/hhtpro/123/guided-diffusion/scripts/image_label_map.txt"
+INDEX2NAME_MAP_PATH = "../scripts/image_label_map.txt"
 DT = lambda :datetime.datetime.now().strftime("adv-%Y-%m-%d-%H-%M-%S-%f")
 get_grid = lambda pic: make_grid(pic.detach().clone(), len(pic), normalize=True)
 def add_border(img, flag, width=1, R=1, G=0, B=0):
@@ -63,7 +63,7 @@ def get_steps_scale_map(num_timesteps, section_counts, scales):
     extra = num_timesteps % len(section_counts)
     start_idx = 0
     for i, section_count in enumerate(section_counts):
-        size = size_per + (1 if i < extra else 0) # 区间长度 余多少 就对多少区间+1 长度补齐
+        size = size_per + (1 if i < extra else 0) 
         if size < section_count:
             raise ValueError(
                 f"cannot divide section of {size} steps into {section_count}"
@@ -80,7 +80,7 @@ def get_steps_scale_map(num_timesteps, section_counts, scales):
     return steps_scale_map
 
 def seed_torch(seed=1029,cuda_deterministic=True):
-    os.environ['PYTHONHASHSEED'] = str(seed) # 为了禁止hash随机化，使得实验可复现
+    os.environ['PYTHONHASHSEED'] = str(seed) 
     random.seed(seed)
     np.random.seed(seed)
     th.manual_seed(seed)

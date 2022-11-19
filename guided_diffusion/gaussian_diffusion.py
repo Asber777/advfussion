@@ -157,23 +157,23 @@ class GaussianDiffusion:
         self.sqrt_recip_alphas_cumprod = np.sqrt(1.0 / self.alphas_cumprod)# sqrt ( 1/ {(bar αt)^2} )
         self.sqrt_recipm1_alphas_cumprod = np.sqrt(1.0 / self.alphas_cumprod - 1) # sqrt( 1/ {(bar αt)^2 -1} )
 
-        # calculations for posterior q(x_{t-1} | x_t, x_0)  DDPM论文公式6
+        # calculations for posterior q(x_{t-1} | x_t, x_0)  DDPM formula 6
         self.posterior_variance = ( # 5e-05 ~0.01
             betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
-        )#q(x_{t-1} | x_t, x_0)的方差大小
+        )#q(x_{t-1} | x_t, x_0)'s variance
         # log calculation clipped because the posterior variance is 0 at the
         # beginning of the diffusion chain.
         self.posterior_log_variance_clipped = np.log(
             np.append(self.posterior_variance[1], self.posterior_variance[1:])
-        )# q(x_{t-1} | x_t, x_0)的方差的log
+        )# 
         self.posterior_mean_coef1 = (
             betas * np.sqrt(self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
-        ) # 均值计算公式的第一部分 后面乘的是x0
+        ) 
         self.posterior_mean_coef2 = (
             (1.0 - self.alphas_cumprod_prev)
             * np.sqrt(alphas)
             / (1.0 - self.alphas_cumprod)
-        )# 均值计算公式的第二部分 后面乘的是xt
+        )
 
     def q_mean_variance(self, x_start, t):
         """
@@ -267,13 +267,13 @@ class GaussianDiffusion:
         model_output = model(x, self._scale_timesteps(t), **model_kwargs)
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
-            # 可学习的方差
+            # leanable variance
             assert model_output.shape == (B, C * 2, *x.shape[2:])
             model_output, model_var_values = th.split(model_output, C, dim=1)
             if self.model_var_type == ModelVarType.LEARNED:
                 model_log_variance = model_var_values
                 model_variance = th.exp(model_log_variance)
-            else: #我们是这种哦
+            else: # which we are
                 min_log = _extract_into_tensor(
                     self.posterior_log_variance_clipped, t, x.shape
                 )
@@ -283,18 +283,18 @@ class GaussianDiffusion:
                 model_log_variance = frac * max_log + (1 - frac) * min_log
                 model_variance = th.exp(model_log_variance)
         else:
-            # 不可学习方差
+            # no learnable variance
             model_variance, model_log_variance = {
                 # for fixedlarge, we set the initial (log-)variance like so
                 # to get a better decoder log likelihood.
                 ModelVarType.FIXED_LARGE: (
                     np.append(self.posterior_variance[1], self.betas[1:]),
                     np.log(np.append(self.posterior_variance[1], self.betas[1:])),
-                ), # 大的 直接使用betas 我们使用这个
+                ), # which we are
                 ModelVarType.FIXED_SMALL: (
                     self.posterior_variance,
                     self.posterior_log_variance_clipped,
-                ), # 小的 直接使用DDPM公式六推导出来的 posterior_variance
+                ), # using DDPM formula 6:  posterior_variance
             }[self.model_var_type]
             model_variance = _extract_into_tensor(model_variance, t, x.shape)
             model_log_variance = _extract_into_tensor(model_log_variance, t, x.shape)
@@ -315,12 +315,10 @@ class GaussianDiffusion:
             if self.model_mean_type == ModelMeanType.START_X:
                 pred_xstart = process_xstart(model_output)
             else: 
-                # 我们是这种 预测eps, 下面这个居然可以预测x0 也的确是 直接拿xt rescale一下减去相关的噪声大小
-                # eps是模型的输出 model_output 下面这个可以求出预测的原图是啥
                 pred_xstart = process_xstart(
                     self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
                 )
-            model_mean, _, _ = self.q_posterior_mean_variance(#居然是拿q(xt-1|xt, x0)来得到的mean 不过这个x0是预测来的
+            model_mean, _, _ = self.q_posterior_mean_variance(
                 x_start=pred_xstart, x_t=x, t=t
             )
         else:
@@ -333,11 +331,10 @@ class GaussianDiffusion:
             "mean": model_mean,
             "variance": model_variance,
             "log_variance": model_log_variance,
-            "pred_xstart": pred_xstart, # 输出这个东西可以利用一下 或者看一下是啥情况的图片哦~~~~~
+            "pred_xstart": pred_xstart, 
         }
 
     def _predict_xstart_from_eps(self, x_t, t, eps):
-        # 通过eps求原图是咋样的
         assert x_t.shape == eps.shape
         return (
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
@@ -345,7 +342,6 @@ class GaussianDiffusion:
         )
 
     def _predict_xstart_from_xprev(self, x_t, t, xprev):
-        # 按照 q(x_{t-1} | x_t, x_0)求取x0 xprev是xt-1
         assert x_t.shape == xprev.shape
         return (  # (xprev - coef2*x_t) / coef1
             _extract_into_tensor(1.0 / self.posterior_mean_coef1, t, x_t.shape) * xprev
@@ -356,7 +352,6 @@ class GaussianDiffusion:
         )
 
     def _predict_eps_from_xstart(self, x_t, t, pred_xstart):
-        # 通过前向公式求取 xt-1 到xt中间的eps
         return (
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
             - pred_xstart
@@ -436,14 +431,6 @@ class GaussianDiffusion:
                  - 'sample': a random sample from the model.
                  - 'pred_xstart': a prediction of x_0.
         """
-        # Repaint在这里加的: START
-        # time = int(t[0].detach().cpu())
-        # if model_kwargs.get('resizer', None) != None:
-        #     if model_kwargs.get('range_t1') and time > model_kwargs['range_t1']:
-        #         weighed_gt = self.q_sample(model_kwargs["guide_x"], t)
-        #         down, up = model_kwargs['resizer']
-        #         x = x - up(down(x)) + up(down(weighed_gt))
-        # Repaint在这里加的: END, 不然会有很小的噪声... 
         out = self.p_mean_variance(
             model,
             x,
@@ -451,7 +438,7 @@ class GaussianDiffusion:
             clip_denoised=clip_denoised,
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
-        )#这里就求得了 mean var log_variance 预测的x0 , log_variance可以用在反向过程中噪声的方差部分
+        )
         noise = th.randn_like(x)
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
@@ -460,16 +447,7 @@ class GaussianDiffusion:
             out["mean"] = self.condition_mean(
                 cond_fn, out, x, t, model_kwargs=model_kwargs
             )
-        # 这里的th.exp(0.5 * out["log_variance"]) 其实就是标准差xt−1=(1/αt)*(xt−βtϵθ(xt,t))+σt z
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        # if time != 0:
-        #     weighed_gt = self.q_sample(model_kwargs["guide_x"], t)
-        # else:
-        #     weighed_gt = 0
-        # if model_kwargs.get('mask', None) != None: #  and 80> time >30
-        #     mask = model_kwargs['mask'] 
-        #     nomask = 1 - mask
-        #     sample = (mask* weighed_gt + nomask * sample)
 
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
@@ -575,13 +553,9 @@ class GaussianDiffusion:
         if device is None:
             device = next(model.parameters()).device
         assert isinstance(shape, (tuple, list))
-        # if noise is not None: # 这里的noise是不是None的意思 是可以从某一个t开始的意思啊啊啊啊 原来有实现
-        #     img = noise
-        # else:
-        #     img = th.randn(*shape, device=device) # 这题就是从0开始... 
         if start_t != None:
             t = th.tensor([start_t-1] * shape[0], device=device)
-            img = self.q_sample(model_kwargs["guide_x"], t,) # 没问题 因为len(self.sqrt_one_minus_alphas_cumprod)=timestep_respacing 意味着输入的t的确要0~timestep_respacing
+            img = self.q_sample(model_kwargs["guide_x"], t,) 
             indices = list(range(start_t))[::-1]
         else:
             img = th.randn(*shape, device=device)
@@ -592,8 +566,6 @@ class GaussianDiffusion:
             from tqdm.auto import tqdm
 
             indices = tqdm(indices)
-        # 如果要从中间开始 这里需要修改 把img修改成 加了噪声的xt 以及indices也是需要从中间开始
-        # 不过需要注意 如果使用了respace, 比如space_n=100, num_timesteps=100, t要从这中间选择
         for i in indices: 
             t = th.tensor([i] * shape[0], device=device)
             with th.no_grad():
