@@ -4,6 +4,8 @@ classify_image_graph_def.pb
 guided_diffusion.egg-info
 data/
 output*
+result/
 models
 ref_imgs
 lafeat*.py
+advfussion.egg-info

@@ -1,5 +1,5 @@
 import argparse
-from guided_diffusion.script_util import model_and_diffusion_defaults, \
+from advfussion.script_util import model_and_diffusion_defaults, \
     classifier_defaults, add_dict_to_argparser
     
 def create_argparser():
@@ -36,7 +36,7 @@ def create_argparser():
     unchange_flags = dict(
         ImageNetpath = "./data/images",
         seed=666,
-        result_dir='../result',
+        result_dir='./result',
         clip_denoised=True,
         image_size=256,
         model_path="guided-diffusion/models/256x256_diffusion.pt",

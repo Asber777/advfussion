@@ -6,10 +6,10 @@ import torch.distributed as dist
 import torch.nn.functional as F
 from robustbench.utils import load_model
 from tqdm import tqdm
-from guided_diffusion import dist_util, logger
-from guided_diffusion.script_util import create_model_and_diffusion, \
+from advfussion import dist_util, logger
+from advfussion.script_util import create_model_and_diffusion, \
     args_to_dict, model_and_diffusion_defaults,seed_torch
-from guided_diffusion.myargs import create_argparser
+from advfussion.myargs import create_argparser
 print("current cuda count:", th.cuda.device_count())
 device_idx = "cuda:1"
 def main(dir, a, b):

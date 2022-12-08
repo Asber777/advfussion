@@ -2,6 +2,13 @@
 
 This repository is based on [openai/guided-diffusion](https://github.com/openai/guided-diffusion), with modifications for generate adversarial exampels.
 
+# install as package
+
+```
+pip install git+https://github.com/RobustBench/robustbench.git
+pip install -e .
+```
+
 # Download pre-trained models and Image
 
 Here are the download links for each model checkpoint:

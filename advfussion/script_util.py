@@ -7,9 +7,9 @@ from torchvision import transforms
 from torchvision.utils import make_grid
 import os.path as osp
 import torch.nn as nn
-from . import gaussian_diffusion as gd
-from .respace import SpacedDiffusion, space_timesteps
-from .unet import SuperResModel, UNetModel, EncoderUNetModel
+import advfussion.gaussian_diffusion as gd
+from advfussion.respace import SpacedDiffusion, space_timesteps
+from advfussion.unet import SuperResModel, UNetModel, EncoderUNetModel
 import numpy as np
 import random
 import torch.backends.cudnn as cudnn
@@ -149,36 +149,9 @@ def load_args(path):
     return m
 
 from typing import Callable, Optional, Tuple
-from robustbench.data import PREPROCESSINGS
 import torchvision.transforms as transforms
-from robustbench.loaders import CustomImageFolder
 import torch.utils.data as data
-# PREPROCESSINGS['Res256Crop256'] = transforms.Compose([
-#         transforms.Resize(256),
-#         transforms.CenterCrop(256),
-#         transforms.ToTensor()
-#     ])
-# PREPROCESSINGS['Res64Crop64'] = transforms.Compose([
-#         transforms.Resize(64),
-#         transforms.CenterCrop(64),
-#         transforms.ToTensor()
-#     ])
-    
-# def load_imagenet_batch(
-#     batch_size: Optional[int] = 5,
-#     data_dir: str = './data',
-#     transforms: str = 'Res256Crop256'
-# ) -> Tuple[th.Tensor, th.Tensor]:
-#     assert transforms in PREPROCESSINGS
-#     imagenet = CustomImageFolder(data_dir + '/val', 
-#         PREPROCESSINGS[transforms])
-#     test_loader = data.DataLoader(imagenet,
-#                                   batch_size=batch_size,
-#                                   shuffle=False,
-#                                   num_workers=4,
-#                                   drop_last=True)
-#     for x, y, p in test_loader:
-#         yield x*2 -1.0, y
+
 
 def diffusion_defaults():
     """

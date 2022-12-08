@@ -6,12 +6,12 @@ import os.path as osp
 from torchvision import utils
 import torch.distributed as dist
 from robustbench.utils import load_model
-from guided_diffusion import dist_util, logger
-from guided_diffusion.script_util import create_model_and_diffusion, \
+from advfussion import dist_util, logger
+from advfussion.script_util import create_model_and_diffusion, \
     args_to_dict, model_and_diffusion_defaults,seed_torch
-from guided_diffusion.script_util import model_and_diffusion_defaults, \
+from advfussion.script_util import model_and_diffusion_defaults, \
     classifier_defaults, add_dict_to_argparser
-from guided_diffusion.myargs import create_argparser
+from advfussion.myargs import create_argparser
 ''' 
 check PURE ACC for advDDPM
 '''

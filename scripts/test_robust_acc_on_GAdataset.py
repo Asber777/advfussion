@@ -1,5 +1,5 @@
 import torch as th
-from guided_diffusion.data_model.my_loader import MyCustomDataset
+from advfussion.data_model.my_loader import MyCustomDataset
 from robustbench.utils import load_model
 from tqdm import tqdm
 

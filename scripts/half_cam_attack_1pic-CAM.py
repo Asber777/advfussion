@@ -16,13 +16,13 @@ from torch import clamp
 # from pytorch_msssim import ssim, ms_ssim
 from robustbench.utils import load_model
 # from torchvision.utils import make_grid
-from guided_diffusion.data_model.my_loader import MyCustomDataset
+from advfussion.data_model.my_loader import MyCustomDataset
 # from guided_diffusion.resizer import Resizer
-from guided_diffusion import dist_util, logger
-from guided_diffusion.script_util import save_args, create_model_and_diffusion, \
+from advfussion import dist_util, logger
+from advfussion.script_util import save_args, create_model_and_diffusion, \
     args_to_dict, model_and_diffusion_defaults, diffuson_pgd, seed_torch, DT, add_border
-from guided_diffusion.grad_cam import GradCamPlusPlus, get_last_conv_name
-from guided_diffusion.myargs import create_argparser
+from advfussion.grad_cam import GradCamPlusPlus, get_last_conv_name
+from advfussion.myargs import create_argparser
 
 
 def main():

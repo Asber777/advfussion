@@ -10,13 +10,13 @@ import os.path as osp
 import torch.distributed as dist
 import functools
 from robustbench.utils import load_model
-from guided_diffusion.data_model.my_loader import MyCustomDataset
-from guided_diffusion.bpda_eot.bpda_eot_attack import BPDA_EOT_Attack
-from guided_diffusion import dist_util, logger
-from guided_diffusion.script_util import create_model_and_diffusion, \
+from advfussion.data_model.my_loader import MyCustomDataset
+from advfussion.bpda_eot.bpda_eot_attack import BPDA_EOT_Attack
+from advfussion import dist_util, logger
+from advfussion.script_util import create_model_and_diffusion, \
     args_to_dict, model_and_diffusion_defaults, seed_torch, classifier_defaults, \
     add_dict_to_argparser, DT
-from guided_diffusion.bpda_utils import get_accuracy
+from advfussion.bpda_utils import get_accuracy
 
 class ResNet_Adv_Model(nn.Module):
     def __init__(self, model, device):
