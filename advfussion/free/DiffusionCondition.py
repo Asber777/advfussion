@@ -3,7 +3,6 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.utils import save_image
 import numpy as np
 from tqdm import tqdm
 from .lafeat import attack_batch

@@ -3,8 +3,9 @@ import datetime
 import os 
 import json
 import datetime
-from advfussion.free.TrainCondition import eval
-def main():
+from advfussion.free.TrainCondition import pure
+
+if __name__ == '__main__':
     modelConfig = {
         "state": "eval", # or "ablation", "draw_pure_cur", "get_y"
         "sample_num": 1000,  # total number of images to generate
@@ -91,8 +92,4 @@ def main():
         config_str = "state:eval/"+"/".join([f"{k}:{modelConfig[k]}"for k in save_arg[1:]])
         modelConfig['save_path'] = modelConfig["sampled_dir"] +'/'+ config_str
         assert os.path.isdir(modelConfig['save_path'])
-    eval(modelConfig, PureConfig)
-    
-        
-if __name__ == '__main__':
-    main()
+    eval(modelConfig)

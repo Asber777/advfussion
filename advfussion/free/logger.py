@@ -70,7 +70,7 @@ class HumanOutputFormat(object):
 
 def get_current():
     if Logger.CURRENT is None:
-        configure()
+        set_logger()
         Logger.DEFAULT = Logger.CURRENT
 
     return Logger.CURRENT
@@ -110,7 +110,7 @@ class Logger(object):
         self.output_formats.close()
 
 
-def configure(dir=None, log_suffix=""):
+def set_logger(dir=None, log_suffix=""):
     assert isinstance(dir, str)
     dir = os.path.expanduser(dir)
     os.makedirs(os.path.expanduser(dir), exist_ok=True)
@@ -128,7 +128,7 @@ def reset():
 
 if __name__ == '__main__':
     dir='/root/hhtpro/123/DenoisingDiffusionProbabilityModel-ddpm-'
-    configure(dir)
+    set_logger(dir)
     log("creating samples...")
     log(f"test{123.123}")
     get_current().close()
