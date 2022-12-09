@@ -7,5 +7,4 @@ output*
 result/
 models
 ref_imgs
-lafeat*.py
 advfussion.egg-info

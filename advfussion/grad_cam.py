@@ -60,7 +60,7 @@ class GradCAM(object):
             feature = self.feature  # [B,C,H,W]
             cam = feature * weight[:,:,None,None]  # [B,C,H,W]
             cam = relu(torch.sum(cam, dim=1))  # [B,H,W]
-            # cam -= torch.min(torch.min(cam,dim=1)[0], dim=1)[0] # 大概率是0
+            # cam -= torch.min(torch.min(cam,dim=1)[0], dim=1)[0] 
             cam /= torch.max(torch.max(cam,dim=1)[0], dim=1)[0].reshape(-1,1,1)
             resize = Resize((H, W))
         return resize(cam)
@@ -86,8 +86,8 @@ class GradCamPlusPlus(GradCAM):
             target = output[range(N), index].sum()
             target.backward()
             gradient = relu(self.gradient)  # [B,C,H,W]
-            indicate = torch.where(gradient > 0, 1., 0.)  # 示性函数
-            norm_factor = torch.sum(gradient, dim=[2,3])  # [B,C]归一化
+            indicate = torch.where(gradient > 0, 1., 0.)  
+            norm_factor = torch.sum(gradient, dim=[2,3])  
             norm_factor = torch.where(norm_factor>0,  
                 1/norm_factor, torch.zeros_like(norm_factor))
             alpha = indicate * norm_factor[...,None,None]  # [B,C,H,W]
