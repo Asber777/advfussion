@@ -56,7 +56,6 @@ def main():
             mask=None, threshold=None, early_stop=True, **kwargs):
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
         if args.use_adver and args.range_t2_s <=time <= args.range_t2_e:
-            maks = mask.detach().clone()
             eps = th.exp(0.5 * log_variance)
             delta = th.zeros_like(x)
             with th.enable_grad():
@@ -74,7 +73,7 @@ def main():
                     loss = -selected.sum()
                     loss.backward()
                     grad_ = delta.grad.data.detach().clone()
-                    delta.data += grad_  * args.adver_scale  *(1-maks)**args.mask_p
+                    delta.data += grad_  * args.adver_scale  *(1-mask)**args.mask_p
                     delta.data = clamp(delta.data, -eps, eps)
                     # delta.data = clamp(pred_xstart.data + delta.data, -1, +1) - pred_xstart.data
                     delta.grad.data.zero_()

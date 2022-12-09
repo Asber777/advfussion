@@ -51,7 +51,7 @@ def main():
 
     def cond_fn(x, t, y=None, guide_x=None, guide_x_t=None, 
             mean=None, log_variance=None,  pred_xstart=None, 
-            mask=None, threshold=None, early_stop=True, **kwargs):
+            mask=0, threshold=None, early_stop=True, **kwargs):
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
         out_path = os.path.join(logger.get_dir(), f"pred_xstart{str(time).zfill(5)}.png")
         utils.save_image(pred_xstart, out_path, nrow=args.batch_size, 
@@ -60,7 +60,6 @@ def main():
         utils.save_image(x, out_path, nrow=args.batch_size, 
                 normalize=True, range=(-1, 1),)
         if args.use_adver and args.range_t2_s <=time <= args.range_t2_e:
-            maks = mask.detach().clone()
             eps = th.exp(0.5 * log_variance)
             delta = th.zeros_like(x)
             with th.enable_grad():
@@ -78,7 +77,7 @@ def main():
                     loss = -selected.sum()
                     loss.backward()
                     grad_ = delta.grad.data.detach().clone()
-                    delta.data += grad_  * args.adver_scale  *(1-maks)**2
+                    delta.data += grad_  * args.adver_scale  *(1-mask)**2
                     delta.data = clamp(delta.data, -eps, eps)
                     # delta.data = clamp(pred_xstart.data + delta.data, -1, +1) - pred_xstart.data
                     delta.grad.data.zero_()

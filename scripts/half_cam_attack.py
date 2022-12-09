@@ -67,7 +67,6 @@ def main():
             mask=0, threshold=None, early_stop=True, **kwargs):
         time = int(t[0].detach().cpu()) # using this variable in add_scalar will GO WRONG!
         if args.use_adver and args.range_t2_s <=time <= args.range_t2_e:
-            mask = mask.detach().clone() if mask!=0 else 0
             eps = th.exp(0.5 * log_variance)
             delta = th.zeros_like(x)
             with th.enable_grad():
