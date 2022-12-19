@@ -11,14 +11,18 @@ from advfussion.free.TrainCondition import eval
         # "eps":3/255,
         # "threat_name":"Linf", 
 '''
+'''
+40s Standard bs:50 start_T:100
+0.8s/pic 
+'''
 if __name__ == '__main__':
     config = {
         "sample_num": 1000,  # total number of images to generate
         "batch_size": 50, # batch size of once generation
         "device": "cuda", # assign your device
-        "save_dir": "./", # where to load weight of condition diffusion
+        "save_dir": "/root/", # where to load weight of condition diffusion
         "test_load_weight": "DiffusionConditionWeight.pt", # the name of weight of condition diffusion
-        "sampled_dir": "./Appendix", # I think it might be not used
+        "sampled_dir": "./Appendix", # where to save result 
         "nrow": 10, # how much pictures in a row when using method <save_image>
         'seed':8,  # random seed
         # attack 
@@ -27,9 +31,9 @@ if __name__ == '__main__':
         "robustPath":"./models", # where to load the attacked model 
         'cifar10path' : '/root/datasets', # where to load CIFAR10 data
 
-        "adver_scale":0.15, # hyper1 
+        "adver_scale":0.05, # hyper1 
         "nb_iter_conf":1, # hyper2
-        "eps":0.15, # hyper1
+        # "eps":0.15, # hyper1
         "threat_name":"L2", #
         "ts":0, # hyper3 : the time to end adversarial guidance, usually to be 0
         "te":100, # hyper3 : the time to start adversarial guidance
@@ -57,7 +61,7 @@ if __name__ == '__main__':
     }
     config['state'] = 'eval'
     config['time'] = datetime.datetime.now().strftime("%m-%d-%H-%M")
-    config['save_path'] = config["sampled_dir"] + config['time']
+    config['save_path'] = config["sampled_dir"] + '/'+ config['time']
     os.makedirs(config['save_path'], exist_ok=True)
     args_path = os.path.join(config['save_path'], f"exp.json")
     info_json = json.dumps(config, sort_keys=False, indent=4, separators=(' ', ':'))

@@ -185,23 +185,26 @@ def attack_batch_lafeat(
     returnkwarg['delta'] = xa
     return returnkwarg
 
-def cond_fn(x, y, model, var, mask=None, 
-        adver_scale=1, nb_iter_conf = 1):
-    maks = mask.detach().clone() if mask != None else 0
-    eps = torch.sqrt(var) * 3
-    delta = torch.zeros_like(x)
+def cond_fn(pred_xstart, y, model, var, mask=0, 
+        adver_scale=1, nb_iter_conf = 1, early_stop=True, mask_p=1):
+    # eps = torch.sqrt(var) * 3
+    delta = torch.zeros_like(pred_xstart)
     with torch.enable_grad():
         delta.requires_grad_()
         for _ in range(nb_iter_conf):
-            tmpx = x.detach().clone() + delta  # range from -1~1
+            tmpx = pred_xstart.detach() + delta  # range from -1~1
             attack_logits = model(torch.clamp((tmpx+1)/2.,0.,1.)) 
-            target = torch.where(attack_logits.argmax(dim=1)==y, y, attack_logits.argmin(dim=1))
-            sign = torch.where(attack_logits.argmax(dim=1)==y, 1, -1)
+            if early_stop:
+                target = y
+                sign = torch.where(attack_logits.argmax(dim=1)==y, 1, 0)
+            else:
+                target = torch.where(attack_logits.argmax(dim=1)==y, y, attack_logits.argmin(dim=1))
+                sign = torch.where(attack_logits.argmax(dim=1)==y, 1, -1)
             selected = sign * attack_logits[range(len(attack_logits)), target.view(-1)] 
             loss = -selected.sum()
             loss.backward()
             grad_ = delta.grad.data.detach().clone()
-            delta.data += grad_  * adver_scale *(1-maks)
-            delta.data = torch.clamp(delta.data, -eps, eps)
+            delta.data += grad_  * adver_scale *(1-mask) ** mask_p
+            # delta.data = torch.clamp(delta.data, -eps, eps)
             delta.grad.data.zero_() 
-    return delta.detach().clone()
+    return delta.data.float()

@@ -74,20 +74,19 @@ def eval(config: Dict):
 
     for images, labels in dataloader:
         images, labels = images.to(device), labels.to(device)
-        mask = grad_cam(images).unsqueeze(1)
+        mask = grad_cam(images * 0.5 + 0.5).unsqueeze(1)
         model_kwargs = {
             "mask":mask, 
             "modelConfig":config, 
-            "path": config['save_path'], 
-            "images":images, 
-            "lpips": None
+            # "path": config['save_path'], 
+            # "images":images, 
+            # "lpips": None
             }
         with torch.no_grad():
             xt = sampler.get_xt(x_0=images, t=config['start_T']-1)
-            sampledImgs, acc_cure = sampler(xt, labels+1, attack_model, 
+            sampledImgs = sampler(xt, labels, attack_model, 
                 config["start_T"], kwargs=model_kwargs, 
                 show = config['save_intermediate_result'])
-            if config['save_intermediate_result']: log(acc_cure)
 
             pred_y = attack_model(sampledImgs * 0.5 + 0.5).argmax(dim=1)
             target_err_total += sum(labels!=pred_y)

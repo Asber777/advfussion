@@ -5,9 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
-from .lafeat import attack_batch
+from .lafeat import attack_batch, cond_fn
 from . import logger
-from .utils import add_border
 
 def extract(v, t, x_shape):
     """
@@ -107,111 +106,41 @@ class GaussianDiffusionSampler(nn.Module):
         )
         return posterior_mean
 
-    def guide_pred_xstart(self, pred_xstart, image, mask, p, scale):
-        # sign =  > (1-mask) * p
-        image, mask = image.detach().clone(), mask.detach().clone()
-        sign = (mask > p).int() * (abs(pred_xstart-image) > p/5).int() 
-        delta = torch.zeros_like(pred_xstart)
-        with torch.enable_grad():
-            delta.requires_grad_()
-            # loss = -(abs(pred_xstart + delta -image) * sign).sum()
-            loss = -(abs(pred_xstart + delta -image) * sign * mask).sum()
-            loss.backward()
-            grad_ = delta.grad.data.detach().clone()
-            delta.grad.data.zero_()
-        return (pred_xstart + grad_* scale).detach().clone()
-
-
     def p_mean_variance(self, x_t, t, labels, attack_model=None, kwargs=None):
         modelConfig = kwargs['modelConfig']
         var = torch.cat([self.posterior_var[1:2], self.betas[1:]])
         var = extract(var, t, x_t.shape)
-        eps = self.model(x_t, t, labels)
-        nonEps = self.model(x_t, t, torch.zeros_like(labels).to(labels.device))
+        # labels should between 0~9, and diffusion use 0 as no label, so we need to add 1.
+        eps = self.model(x_t, t, labels+1)
+        nonEps = self.model(x_t, t, torch.zeros_like(labels))
         eps = (1. + self.w) * eps - self.w * nonEps
         pred_xstart = self._predict_xstart_from_eps(x_t=x_t, t=t, eps=eps).clamp(-1, 1)
-        # masking
-        mask = kwargs['mask']
-        # if modelConfig['perturbxp']:
-        #     # TODO 
-        #     pred_xstart = self.guide_pred_xstart(pred_xstart, kwargs['images'],
-        #         mask, modelConfig['orginal_p'], modelConfig['L2scale'])
-        #     # maks = mask.detach().clone() if mask != None else 0
-        #     # pred_xstart = pred_xstart * (1-mask)  + kwargs['images'] * mask
         xt_prev_mean = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x_t, t=t)
-        # xt_prev_mean = self.predict_xt_prev_mean_from_eps(x_t, t, eps=eps)
-        kw = None
-        if modelConfig['perturbxt'] and attack_model is not None:
-            ts, te= modelConfig['ts'], modelConfig['te']
-            time = int(t[0].detach().cpu())
-            if ts <=time <= te:# and time % 4 == 0:
-                logger.log(f"current time {time}")
-                kw = attack_batch((pred_xstart.detach().clone()+1)/2, labels-1, 
-                    modelConfig['nb_iter_conf'], attack_model, 
-                    modelConfig['Attacker'], modelConfig['adver_scale'], 
-                    threat_name=modelConfig['threat_name'],
-                    epsilon=modelConfig['eps'], resume=modelConfig['save_intermediate_result'], 
-                    mask=(1-mask) if modelConfig['useCAM'] else 1, 
-                    use_lpips=modelConfig['perturbxp'],
-                    originalx=kwargs['images'], lpips_fn=kwargs['lpips'],
-                    lpips_scale=modelConfig['lpips_scale']) # mask=(1-mask)
-                delta = kw['delta']*2
-                xt_prev_mean = xt_prev_mean + delta
-        return xt_prev_mean, var, pred_xstart, kw
-
-    def get_new_label(self, pred, labels):
-        pred[range(len(pred)), labels-1] = -99999
-        v, idx = torch.max(pred, 1)
-        return idx
-
-    def p_mean_variance_label(self, x_t, t, labels, attack_model=None, kwargs=None):
-        var = torch.cat([self.posterior_var[1:2], self.betas[1:]])
-        var = extract(var, t, x_t.shape)
-        eps = self.model(x_t, t, labels)
-        nonEps = self.model(x_t, t, torch.zeros_like(labels).to(labels.device))
-        eps = (1. + self.w) * eps - self.w * nonEps
-        pred_xstart = self._predict_xstart_from_eps(x_t=x_t, t=t, eps=eps).clamp(-1, 1)
-
-        pred = attack_model((pred_xstart+1)/2)
-        new_label = self.get_new_label(pred, labels)
-        new_label += 1 # label should +1 since it's train in [1,10]
-        eps = self.model(x_t, t, new_label)
-        nonEps = self.model(x_t, t, torch.zeros_like(labels).to(labels.device))
-        eps = (1. + self.w) * eps - self.w * nonEps
-        pred_xstart = self._predict_xstart_from_eps(x_t=x_t, t=t, eps=eps).clamp(-1, 1)
-
-        xt_prev_mean = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x_t, t=t)
-        return xt_prev_mean, var, pred_xstart
+        # kw = None
+        time = int(t[0].detach().cpu())
+        if kwargs['adversarial'] and modelConfig['ts'] <= time <= modelConfig['te']:
+            delta = cond_fn(pred_xstart, labels, attack_model, var, mask=kwargs['mask'], 
+                adver_scale=modelConfig['adver_scale'], 
+                nb_iter_conf = modelConfig['nb_iter_conf']) 
+            '''kw = attack_batch((pred_xstart.detach().clone()+1)/2, labels-1, 
+                modelConfig['nb_iter_conf'], attack_model, 
+                modelConfig['Attacker'], modelConfig['adver_scale'], 
+                threat_name=modelConfig['threat_name'],
+                epsilon=modelConfig['eps'], resume=modelConfig['save_intermediate_result'], 
+                mask=(1-mask) if modelConfig['useCAM'] else 1, 
+                use_lpips=modelConfig['perturbxp'],
+                originalx=kwargs['images'], lpips_fn=kwargs['lpips'],
+                lpips_scale=modelConfig['lpips_scale']) # mask=(1-mask)
+            delta = kw['delta']*2'''
+            xt_prev_mean = xt_prev_mean.float() + delta.data.float() * 2 
+        return xt_prev_mean, var
 
     def forward(self, x_T, labels, model=None, start_T=None, show=False, kwargs=None, ):
-        """
-        Algorithm 2.
-        """
         x_t = x_T
-        modelConfig = kwargs['modelConfig']
-        if modelConfig['Attacker'] in ['lafeat', 'pgd']:
-            p_func = self.p_mean_variance 
-        elif modelConfig['Attacker'] == 'label':
-            p_func = self.p_mean_variance_label
-        else:
-            raise ValueError("No such Attacker, plz choose  'lafeat', 'pgd' or 'label'")
-        acc_cure, logit_cure = [], []
         for time_step in tqdm(reversed(range(start_T))):
             t = x_t.new_ones([x_T.shape[0], ], dtype=torch.long) * time_step
-            mean, var, pred_xstart, kw = p_func(x_t=x_t, t=t, labels=labels, attack_model=model, kwargs=kwargs)
-            if show and model is not None:
-                if kw is not None: 
-                    acc_cure.append(kw['init_acc'])
-                    acc_cure.append(kw['acc_after'])
-                if kw is not None: 
-                    logit_cure.append(kw['init_logit'])
-                    logit_cure.append(kw['logit_after'])
-                # if (time_step+1) % 10 == 0:
-                #     pred_xstart = add_border(pred_xstart, ~kw['flag'])
-                #     save_image(pred_xstart, os.path.join(kwargs['path'], f'xp{time_step}.png'), 
-                #         nrow=8,  normalize=True, range=(-1, 1))
-                #     save_image(mean, os.path.join(kwargs['path'], f'x{time_step}.png'), 
-                #         nrow=8,  normalize=True, range=(-1, 1))
+            mean, var = self.p_mean_variance(x_t=x_t, t=t, 
+                labels=labels, attack_model=model, kwargs=kwargs)
             if time_step > 0:
                 noise = torch.randn_like(x_t)
             else:
@@ -219,6 +148,6 @@ class GaussianDiffusionSampler(nn.Module):
             x_t = mean + torch.sqrt(var) * noise
             assert torch.isnan(x_t).int().sum() == 0, "nan in tensor."
         x_0 = x_t
-        return torch.clip(x_0, -1, 1), acc_cure 
+        return torch.clip(x_0, -1, 1)
 
 

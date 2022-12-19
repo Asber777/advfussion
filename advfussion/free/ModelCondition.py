@@ -225,19 +225,3 @@ class UNet(nn.Module):
         return h
 
 
-if __name__ == '__main__':
-    batch_size = 8
-    model = UNet(
-        T=1000, num_labels=10, ch=128, ch_mult=[1, 2, 2, 2],
-        num_res_blocks=2, dropout=0.1)
-    x = torch.randn(batch_size, 3, 32, 32)
-    t = torch.randint(1000, size=[batch_size])
-    labels = torch.randint(10, size=[batch_size])
-    # resB = ResBlock(128, 256, 64, 0.1)
-    # x = torch.randn(batch_size, 128, 32, 32)
-    # t = torch.randn(batch_size, 64)
-    # labels = torch.randn(batch_size, 64)
-    # y = resB(x, t, labels)
-    y = model(x, t, labels)
-    print(y.shape)
-

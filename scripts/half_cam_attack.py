@@ -118,7 +118,7 @@ def main():
     for i, (img, label, img_name) in enumerate(attack_loader):
         count += len(img)
         img, label = img.to(device), label.to(device)
-        mask = grad_cam(img).unsqueeze(1) if args.use_cam else None
+        mask = grad_cam(img).unsqueeze(1) if args.use_cam else 0
         # get natural_err_total
         with th.no_grad():
             err = (attack_model(img).data.max(1)[1] != label.data).float().sum()

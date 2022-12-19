@@ -634,7 +634,7 @@ class UNetModel(nn.Module):
     def forward(self, x, timesteps, y=None):
         """
         Apply the model to an input batch.
-
+x
         :param x: an [N x C x ...] Tensor of inputs.
         :param timesteps: a 1-D batch of timesteps.
         :param y: an [N] Tensor of labels, if class-conditional.

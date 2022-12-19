@@ -499,35 +499,6 @@ class GaussianDiffusion:
             final = sample
         return final["sample"]
 
-    def noddpm_p_sample_loop(
-        self,
-        model,
-        shape,
-        noise=None,
-        clip_denoised=True,
-        denoised_fn=None,
-        cond_fn=None,
-        model_kwargs=None,
-        device=None,
-        progress=False,
-        start_t=None,
-    ):
-        if device is None:
-            device = next(model.parameters()).device
-        assert isinstance(shape, (tuple, list))
-        if start_t != None:
-            t = th.tensor([start_t-1] * shape[0], device=device)
-            img = self.q_sample(model_kwargs["guide_x"], t,)
-            indices = list(range(start_t))[::-1]
-        else:
-            img = th.randn(*shape, device=device)
-            indices = list(range(self.num_timesteps))[::-1]
-        if progress:
-            # Lazy import so that we don't depend on tqdm.
-            from tqdm.auto import tqdm
-            indices = tqdm(indices)
-        
-
 
     def p_sample_loop_progressive(
         self,
