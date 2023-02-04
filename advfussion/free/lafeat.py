@@ -186,7 +186,7 @@ def attack_batch_lafeat(
     return returnkwarg
 
 def cond_fn(pred_xstart, y, model, var, mask=0, 
-        adver_scale=1, nb_iter_conf = 1, early_stop=True, mask_p=1):
+        adver_scale=1, nb_iter_conf = 1, early_stop=True, mask_p=1, contrastive=False):
     # eps = torch.sqrt(var) * 3
     delta = torch.zeros_like(pred_xstart)
     with torch.enable_grad():
@@ -197,14 +197,22 @@ def cond_fn(pred_xstart, y, model, var, mask=0,
             if early_stop:
                 target = y
                 sign = torch.where(attack_logits.argmax(dim=1)==y, 1, 0)
+                if sign.sum() == 0: 
+                    print("early stop")
+                    break
             else:
                 target = torch.where(attack_logits.argmax(dim=1)==y, y, attack_logits.argmin(dim=1))
                 sign = torch.where(attack_logits.argmax(dim=1)==y, 1, -1)
-            selected = sign * attack_logits[range(len(attack_logits)), target.view(-1)] 
+            if not contrastive:
+                original_loss = attack_logits[range(len(attack_logits)), target.view(-1)]
+            else:
+                v,i = torch.topk(attack_logits,10,dim=1)
+                original_loss = -v[:,1] + v[:,-1] + v[:, 0] # find secondary logits and last like logits
+            selected = sign * original_loss
             loss = -selected.sum()
             loss.backward()
             grad_ = delta.grad.data.detach().clone()
             delta.data += grad_  * adver_scale *(1-mask) ** mask_p
             # delta.data = torch.clamp(delta.data, -eps, eps)
             delta.grad.data.zero_() 
-    return delta.data.float()
+    return delta.data.float().detach()

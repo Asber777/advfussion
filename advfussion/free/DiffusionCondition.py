@@ -121,7 +121,7 @@ class GaussianDiffusionSampler(nn.Module):
         if kwargs['adversarial'] and modelConfig['ts'] <= time <= modelConfig['te']:
             delta = cond_fn(pred_xstart, labels, attack_model, var, mask=kwargs['mask'], 
                 adver_scale=modelConfig['adver_scale'], 
-                nb_iter_conf = modelConfig['nb_iter_conf']) 
+                nb_iter_conf = modelConfig['nb_iter_conf'], contrastive = kwargs['contrastive']) 
             '''kw = attack_batch((pred_xstart.detach().clone()+1)/2, labels-1, 
                 modelConfig['nb_iter_conf'], attack_model, 
                 modelConfig['Attacker'], modelConfig['adver_scale'], 
