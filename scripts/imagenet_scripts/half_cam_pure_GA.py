@@ -2,27 +2,30 @@
 import os
 import torch as th
 import os.path as osp
+from torchvision import utils
 import torch.distributed as dist
 import torch.nn.functional as F
 from robustbench.utils import load_model
-from tqdm import tqdm
 from advfussion import dist_util, logger
 from advfussion.script_util import create_model_and_diffusion, \
     args_to_dict, model_and_diffusion_defaults,seed_torch
 from advfussion.myargs import create_argparser
-print("current cuda count:", th.cuda.device_count())
-device_idx = "cuda:1"
-def main(dir, a, b):
-    device = th.device(device_idx)
+os.environ['CUDA_VISIBLE_DEVICES']='0,1'
+uncondition_ddpm_path = "/root/hhtpro/123/models/guide_ddpm/256x256_diffusion_uncond.pt"
+
+
+def main():
     args = create_argparser().parse_args()
-    args.attack_model_name = a
-    args.attack_model_type = b
+    args.model_path = uncondition_ddpm_path
+    args.class_cond = False
     args.batch_size = 1
     dist_util.setup_dist()
-    logger.configure(dir, log_suffix='pure')
-    pure_dir = osp.join(logger.get_dir(), 'pure')
+    device = dist_util.dev()
+    Pure_name = f"pure_Ts:{args.start_t}"
+    logger.configure(args.dir, log_suffix=Pure_name)
+    logger.log(f"using {th.cuda.device_count()} GPU.")
+    pure_dir = osp.join(logger.get_dir(), Pure_name)
     os.makedirs(pure_dir, exist_ok=True)
-    # load args
 
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys()))
@@ -37,23 +40,22 @@ def main(dir, a, b):
     attack_model = attack_model.to(device).eval()
 
     def model_fn(x, t, y=None, **kwargs):
-        assert y is not None
-        return model(x, t, y if args.class_cond else None)
+        return model(x, t, None)
 
     logger.log("creating samples...")
     target_err_total_after_pure = th.tensor(0.0).to(device)
     seed_torch(args.seed)
     with th.no_grad():
-        for i in tqdm(range(1000)):
+        for i in range(1000):
             advx = th.load(os.path.join(logger.get_dir(), f'image/{str(i)}.pt'))
-            advx = advx.to(device)
-            advx = advx.unsqueeze(0)
+            advx = advx.to(device).unsqueeze(0)
             advx = F.interpolate(advx, size=args.image_size, mode="nearest")
             y = th.tensor([i]).to(device)
-            model_kwargs = {"guide_x":advx.detach().clone()*2-1, "y":y, "mask":None,}
+            pred = attack_model(advx).argmax(dim=-1)
+            model_kwargs = {"guide_x":advx.detach().clone()*2-1, "mask":None,}
             sample = diffusion.p_sample_loop(
                 model_fn,
-                (1, 3, args.image_size, args.image_size),
+                (args.batch_size, 3, args.image_size, args.image_size),
                 clip_denoised=args.clip_denoised,
                 model_kwargs=model_kwargs,
                 cond_fn=None,
@@ -63,19 +65,15 @@ def main(dir, a, b):
             )
             sample = th.clamp(sample,-1.,1.)
             at_predict = attack_model((sample+1)/2).argmax(dim=-1)
-            th.save({"sample":sample, "at_predict":at_predict}, os.path.join(pure_dir, f"{str(i)}.pt"))
             err_mask = (at_predict.data != y.data)
             target_err_total_after_pure += err_mask.float().sum()
             logger.log(f"target_err_total_after_pure:{target_err_total_after_pure}/{i+1}")
+            utils.save_image(sample, os.path.join(pure_dir, f"{str(i)}.png"), 
+                nrow = 5, normalize=True, range=(-1, 1),)
+            pt_path = os.path.join(f'{pure_dir}/{str(i)}.pt')
+            th.save({'sample':sample, "predict_before_pure":pred, 'y':y, "predict":at_predict}, pt_path)
     dist.barrier()
     logger.log("sampling complete")
 
 if __name__ == "__main__":
-    # attack_model_name = 'Engstrom2019Robustness'
-    attack_model_name = 'Salman2020Do_50_2'
-    # attack_model_name = 'Standard_R50' # Engstrom2019Robustness
-    # attack_model_name = 'Salman2020Do_R50'
-    attack_model_type = 'Linf'
-    OUTPUT_DIR=None
-    assert OUTPUT_DIR is not None, "plz assign the dir of GA-attack"
-    main(OUTPUT_DIR, attack_model_name, attack_model_type)
+    main()

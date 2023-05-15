@@ -1,12 +1,9 @@
 
-import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from tqdm import tqdm
-from .lafeat import attack_batch, cond_fn
-from . import logger
+from tqdm.auto import tqdm
 
 def extract(v, t, x_shape):
     """
@@ -105,9 +102,40 @@ class GaussianDiffusionSampler(nn.Module):
             + extract(self.posterior_mean_coef2, t, x_t.shape) * x_t
         )
         return posterior_mean
-
+    
+    def cond_fn(self, pred_xstart, y, model, var, mask=0, 
+            adver_scale=1, nb_iter_conf = 1, early_stop=True, contrastive=False):
+        # eps = torch.sqrt(var) * 3
+        delta = torch.zeros_like(pred_xstart)
+        with torch.enable_grad():
+            delta.requires_grad_()
+            for _ in range(nb_iter_conf):
+                tmpx = pred_xstart.detach() + delta  # range from -1~1
+                attack_logits = model(torch.clamp((tmpx+1)/2.,0.,1.)) 
+                if early_stop:
+                    target = y
+                    sign = torch.where(attack_logits.argmax(dim=1)==y, 1, 0)
+                    if sign.sum() == 0: 
+                        print("early stop")
+                        break
+                else:
+                    target = torch.where(attack_logits.argmax(dim=1)==y, y, attack_logits.argmin(dim=1))
+                    sign = torch.where(attack_logits.argmax(dim=1)==y, 1, -1)
+                if not contrastive:
+                    original_loss = attack_logits[range(len(attack_logits)), target.view(-1)]
+                else:
+                    v,i = torch.topk(attack_logits,10,dim=1)
+                    original_loss = -v[:,1] + v[:,-1] + v[:, 0] # find secondary logits and last like logits
+                selected = sign * original_loss
+                loss = -selected.sum()
+                loss.backward()
+                grad_ = delta.grad.data.detach().clone()
+                delta.data += grad_  * adver_scale *(1-mask) 
+                # delta.data = torch.clamp(delta.data, -eps, eps)
+                delta.grad.data.zero_() 
+        return delta.data.float().detach()
+    
     def p_mean_variance(self, x_t, t, labels, attack_model=None, kwargs=None):
-        modelConfig = kwargs['modelConfig']
         var = torch.cat([self.posterior_var[1:2], self.betas[1:]])
         var = extract(var, t, x_t.shape)
         # labels should between 0~9, and diffusion use 0 as no label, so we need to add 1.
@@ -116,26 +144,16 @@ class GaussianDiffusionSampler(nn.Module):
         eps = (1. + self.w) * eps - self.w * nonEps
         pred_xstart = self._predict_xstart_from_eps(x_t=x_t, t=t, eps=eps).clamp(-1, 1)
         xt_prev_mean = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x_t, t=t)
-        # kw = None
-        time = int(t[0].detach().cpu())
-        if kwargs['adversarial'] and modelConfig['ts'] <= time <= modelConfig['te']:
-            delta = cond_fn(pred_xstart, labels, attack_model, var, mask=kwargs['mask'], 
-                adver_scale=modelConfig['adver_scale'], 
-                nb_iter_conf = modelConfig['nb_iter_conf'], contrastive = kwargs['contrastive']) 
-            '''kw = attack_batch((pred_xstart.detach().clone()+1)/2, labels-1, 
-                modelConfig['nb_iter_conf'], attack_model, 
-                modelConfig['Attacker'], modelConfig['adver_scale'], 
-                threat_name=modelConfig['threat_name'],
-                epsilon=modelConfig['eps'], resume=modelConfig['save_intermediate_result'], 
-                mask=(1-mask) if modelConfig['useCAM'] else 1, 
-                use_lpips=modelConfig['perturbxp'],
-                originalx=kwargs['images'], lpips_fn=kwargs['lpips'],
-                lpips_scale=modelConfig['lpips_scale']) # mask=(1-mask)
-            delta = kw['delta']*2'''
+        if kwargs.get('ts', -1) <= int(t[0].detach().cpu()) <= kwargs.get('te', -1):             
+            delta = self.cond_fn(pred_xstart, labels, attack_model, var, 
+                mask=kwargs.get('mask', 0), 
+                adver_scale=kwargs.get('adver_scale', 0), 
+                nb_iter_conf=kwargs.get('nb_iter_conf', 0), 
+                contrastive = kwargs.get('contrastive', False)) 
             xt_prev_mean = xt_prev_mean.float() + delta.data.float() * 2 
-        return xt_prev_mean, var
+        return xt_prev_mean.detach(), var
 
-    def forward(self, x_T, labels, model=None, start_T=None, show=False, kwargs=None, ):
+    def forward(self, x_T, labels, model=None, start_T=None, kwargs=None, ):
         x_t = x_T
         for time_step in tqdm(reversed(range(start_T))):
             t = x_t.new_ones([x_T.shape[0], ], dtype=torch.long) * time_step
@@ -149,5 +167,3 @@ class GaussianDiffusionSampler(nn.Module):
             assert torch.isnan(x_t).int().sum() == 0, "nan in tensor."
         x_0 = x_t
         return torch.clip(x_0, -1, 1)
-
-
