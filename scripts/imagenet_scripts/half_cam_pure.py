@@ -1,7 +1,6 @@
 
 import os
 import torch as th
-import argparse
 import os.path as osp
 from torchvision import utils
 import torch.distributed as dist
@@ -9,29 +8,26 @@ from robustbench.utils import load_model
 from advfussion import dist_util, logger
 from advfussion.script_util import create_model_and_diffusion, \
     args_to_dict, model_and_diffusion_defaults,seed_torch
-from advfussion.script_util import model_and_diffusion_defaults, \
-    classifier_defaults, add_dict_to_argparser
+from advfussion.script_util import model_and_diffusion_defaults, add_dict_to_argparser
 from advfussion.myargs import create_argparser
 ''' 
 check PURE ACC for advDDPM
 '''
     
-device_idx = "cuda:0"
+os.environ['CUDA_VISIBLE_DEVICES']='0,1'
+uncondition_ddpm_path = "/root/hhtpro/123/models/guide_ddpm/256x256_diffusion_uncond.pt"
+
 def main():
-    os.environ['CUDA_VISIBLE_DEVICES']='0,1,2'
-    print(th.cuda.device_count())
-    a = th.randn(19)
-    a.to(th.device('cuda:2'))
-    device = th.device(device_idx)
     args = create_argparser().parse_args()
-    args.use_adver=False
-    args.class_cond=False
+    args.model_path = uncondition_ddpm_path
+    args.class_cond = False
     dist_util.setup_dist()
-    dir = osp.join(args.result_dir, args.describe, args.pure_name,)
-    logger.configure(dir, log_suffix='pure_uncond')
-    pure_dir = osp.join(logger.get_dir(), 'pure_uncond')
+    device = dist_util.dev()
+    Pure_name = f"pure_Ts:{args.start_t}"
+    logger.configure(args.dir, log_suffix=Pure_name)
+    logger.log(f"using {th.cuda.device_count()} GPU.")
+    pure_dir = osp.join(logger.get_dir(), Pure_name)
     os.makedirs(pure_dir, exist_ok=True)
-    # load args
 
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys()))
@@ -46,17 +42,17 @@ def main():
     attack_model = attack_model.to(device).eval()
 
     def model_fn(x, t, y=None, **kwargs):
-        assert y is not None
-        return model(x, t, y if args.class_cond else None)
+        return model(x, t, None)
 
     logger.log("creating samples...")
     target_err_total_after_pure = th.tensor(0.0).to(device)
     seed_torch(args.seed)
     with th.no_grad():
         for count in range(5,1001, 5):
-            d = th.load(os.path.join(logger.get_dir(), f'result/{str(count).zfill(5)}.pt'))
-            advx, x, y, = d['sample'].to(device), d['x'].to(device), d['y'].to(device)
-            model_kwargs = {"guide_x":advx, "y":y, "mask":None,}
+            result = th.load(os.path.join(logger.get_dir(), f'result/{str(count).zfill(5)}.pt'), map_location=device)
+            advx, pred = result['sample'].to(device), result['predict']
+            x, y = result['x'].to(device), result['y'].to(device)
+            model_kwargs = {"guide_x":advx, "mask":None,} # guide_x means reference img used for Half-Start
             sample = diffusion.p_sample_loop(
                 model_fn,
                 (args.batch_size, 3, args.image_size, args.image_size),
@@ -73,7 +69,11 @@ def main():
             target_err_total_after_pure += err_mask.float().sum()
             logger.log(f"target_err_total_after_pure:{target_err_total_after_pure}/{count}")
             utils.save_image(sample, os.path.join(pure_dir, f"{str(count).zfill(5)}.png"), 
-            nrow=args.batch_size, normalize=True, range=(-1, 1),)
+                nrow = 5, normalize=True, range=(-1, 1),)
+            pt_path = os.path.join(f'{pure_dir}/{str(count).zfill(5)}.pt')
+            th.save({'sample':sample, "x":x, 'y':y, "predict":at_predict}, pt_path)
+
+
     dist.barrier()
     logger.log("sampling complete")
 

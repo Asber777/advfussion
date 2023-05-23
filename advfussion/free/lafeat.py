@@ -1,9 +1,53 @@
 import math
 import torch
 from torch import nn, Tensor
-from typing import Any, Optional
-from .lafeat_util import StepSizeSchedule, ThreatModel, clip, tslice
+from typing import Any, Optional, Literal, Iterable, Tuple
 from . import logger
+
+ThreatModel = Literal['Linf', 'L2']
+
+def clip(x: Tensor, x0: Tensor, threat: str, eps: float) -> Tensor:
+    if threat == 'Linf':
+        eta = torch.clamp(x - x0, -eps, eps)
+        return torch.clamp(x0 + eta, 0.0, 1.0)
+    elif threat == 'L2':
+        norm = ((x - x0) ** 2).sum(dim=(1, 2, 3), keepdim=True).sqrt()
+        return  torch.clamp(x0 + (x - x0) / 
+            (norm+ 1e-12) * torch.min(eps * torch.ones_like(x), norm.detach()), 0.0, 1.0)
+    raise ValueError(f'Unrecognized threat mode {threat!r}.')
+
+def tslice(
+    ts: Iterable[Optional[Tensor]], indices: Tensor
+) -> Tuple[Optional[Tensor], ...]:
+    return tuple(t[indices] if t is not None else None for t in ts)
+
+StepSizeSchedule = Literal['constant', 'linear', 'cosine']
+
+class BaseAttack:
+    early_stop: bool
+    resume: bool
+
+    def __init__(
+        self, early_stop: bool = True, resume: bool = False
+    ) -> None:
+        super().__init__()
+        self.early_stop = early_stop
+        self.resume = resume
+
+    def attack_batch(
+        self,
+        indices: Tensor, images: Tensor, labels: Tensor,
+        adv_images: Optional[Tensor] = None
+    ) -> Tensor:
+        raise NotImplementedError
+
+    def loss_func(
+        self, 
+        indices: Tensor, outputs: Tensor, labels: Tensor,
+        images: Tensor, adv_images: Tensor
+    ) -> Tensor:
+        return nn.functional.cross_entropy(outputs, labels, reduction='none')
+
 
 def grad_schedule(
     epsilon: float, schedule: float, grad: Tensor, 
@@ -185,34 +229,3 @@ def attack_batch_lafeat(
     returnkwarg['delta'] = xa
     return returnkwarg
 
-def cond_fn(pred_xstart, y, model, var, mask=0, 
-        adver_scale=1, nb_iter_conf = 1, early_stop=True, mask_p=1, contrastive=False):
-    # eps = torch.sqrt(var) * 3
-    delta = torch.zeros_like(pred_xstart)
-    with torch.enable_grad():
-        delta.requires_grad_()
-        for _ in range(nb_iter_conf):
-            tmpx = pred_xstart.detach() + delta  # range from -1~1
-            attack_logits = model(torch.clamp((tmpx+1)/2.,0.,1.)) 
-            if early_stop:
-                target = y
-                sign = torch.where(attack_logits.argmax(dim=1)==y, 1, 0)
-                if sign.sum() == 0: 
-                    print("early stop")
-                    break
-            else:
-                target = torch.where(attack_logits.argmax(dim=1)==y, y, attack_logits.argmin(dim=1))
-                sign = torch.where(attack_logits.argmax(dim=1)==y, 1, -1)
-            if not contrastive:
-                original_loss = attack_logits[range(len(attack_logits)), target.view(-1)]
-            else:
-                v,i = torch.topk(attack_logits,10,dim=1)
-                original_loss = -v[:,1] + v[:,-1] + v[:, 0] # find secondary logits and last like logits
-            selected = sign * original_loss
-            loss = -selected.sum()
-            loss.backward()
-            grad_ = delta.grad.data.detach().clone()
-            delta.data += grad_  * adver_scale *(1-mask) ** mask_p
-            # delta.data = torch.clamp(delta.data, -eps, eps)
-            delta.grad.data.zero_() 
-    return delta.data.float().detach()

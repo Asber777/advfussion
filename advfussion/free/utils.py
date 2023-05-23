@@ -4,6 +4,9 @@ from torch import clamp
 import numpy as np
 import random
 import torch.backends.cudnn as cudnn
+def _get_norm_batch(x, p):
+    batch_size = x.size(0)
+    return x.abs().pow(p).view(batch_size, -1).sum(dim=1).pow(1. / p)
 
 def init_seeds(seed=8, cuda_deterministic=True):
     random.seed(seed)
