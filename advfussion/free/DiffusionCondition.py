@@ -122,16 +122,6 @@ class GaussianDiffusionSampler(nn.Module):
             delta = cond_fn(pred_xstart, labels, attack_model, var, mask=kwargs['mask'], 
                 adver_scale=modelConfig['adver_scale'], 
                 nb_iter_conf = modelConfig['nb_iter_conf'], contrastive = kwargs['contrastive']) 
-            '''kw = attack_batch((pred_xstart.detach().clone()+1)/2, labels-1, 
-                modelConfig['nb_iter_conf'], attack_model, 
-                modelConfig['Attacker'], modelConfig['adver_scale'], 
-                threat_name=modelConfig['threat_name'],
-                epsilon=modelConfig['eps'], resume=modelConfig['save_intermediate_result'], 
-                mask=(1-mask) if modelConfig['useCAM'] else 1, 
-                use_lpips=modelConfig['perturbxp'],
-                originalx=kwargs['images'], lpips_fn=kwargs['lpips'],
-                lpips_scale=modelConfig['lpips_scale']) # mask=(1-mask)
-            delta = kw['delta']*2'''
             xt_prev_mean = xt_prev_mean.float() + delta.data.float() * 2 
         return xt_prev_mean, var
 
