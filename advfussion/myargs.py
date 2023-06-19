@@ -4,7 +4,7 @@ from advfussion.script_util import model_and_diffusion_defaults, \
     
 def create_argparser():
     defaults = dict(
-        dir="/root/hhtpro/123/result/makeitsiilar-early_stop/Engstrom2019Robustness", 
+        dir="./result", 
         device='cuda',
         batch_size=5,
         stop_count=1000, # 1000,
@@ -12,14 +12,15 @@ def create_argparser():
         use_adver=True,
         range_t2_e=100, 
         range_t2_s=0,
-        attack_model_name= "Engstrom2019Robustness", #"Standard_R50", #"Salman2020Do_50_2"
+        attack_model_name= "Salman2020Do_50_2",#"Engstrom2019Robustness", #"Standard_R50", #"Salman2020Do_50_2"
+        transfer_model_name = 'Engstrom2019Robustness',
         adver_scale=1.0, #3
         # PGD at begin
         # nb_iter=30,
         nb_iter_conf=1, #1
         # half setting
         use_half=True,
-        start_t=100, #100,  # must <= max(timestep_respacing) ? currently
+        start_t=25, #100,  # must <= max(timestep_respacing) ? currently
         # CAM setting
         use_cam=False,
         mask_p=1,
@@ -33,13 +34,12 @@ def create_argparser():
         diffusion_steps=1000,
         )
     unchange_flags = dict(
-        ImageNetpath = "/root/hhtpro/123/GA-Attack-main/data/images",
+        ImageNetpath = "/root/images",
         seed=666,
-        result_dir='./result',
+        # result_dir='./result',
         clip_denoised=True,
         image_size=256,
-        model_path="/root/hhtpro/123/models/guide_ddpm/256x256_diffusion.pt",
-        classifier_path="/root/hhtpro/123/models/guide_ddpm/256x256_classifier.pt",
+        model_path="/root/256x256_diffusion.pt",
         attack_model_type='Linf',
         attention_resolutions="32,16,8",
         learn_sigma=True, 
