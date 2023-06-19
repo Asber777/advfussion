@@ -371,6 +371,8 @@ class GaussianDiffusion:
 
         This uses the conditioning strategy from Shl-Dickstein et al. (2015).
         """
+        guide_x = model_kwargs['guide_x']
+        model_kwargs['guide_x_t'] = self.q_sample(guide_x, t, th.zeros_like(guide_x))
         new_mean = cond_fn(x, self._scale_timesteps(t), **model_kwargs, **p_mean_var)
         # new_mean = (
         #     p_mean_var["mean"].float() + p_mean_var["variance"] * gradient.float()
